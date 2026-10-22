@@ -844,7 +844,11 @@ whole account.
     }
   }
 
+  let backendFeatures = null;   // null = unknown (full Python backend reports nothing -> assume everything works)
+
   function renderSandboxes(d) {
+    backendFeatures = (d && d.features) || null;
+    applyFeatureNotes();
     const strip = document.getElementById('sandbox-strip');
     const langPills = document.getElementById('dash-lang-pills');
     const sbPills = document.getElementById('dash-sandbox-pills');
@@ -861,6 +865,23 @@ whole account.
       '<span class="pill ' + (sb.available ? 'live' : 'needs') + '" title="' + escapeHtml(tip(sb)) + '">' + escapeHtml(sb.label) + (sb.available ? '' : ' ✕') + '</span>').join('');
     langPills.innerHTML = d.sandboxes.filter(sb => sb.id !== 'terminal').map(sb =>
       '<span class="pill ' + (sb.available ? 'live' : 'needs') + '">' + escapeHtml(sb.label) + (sb.available ? ': live' : ': not installed') + '</span>').join('');
+  }
+
+  // The Vercel backend runs code but has no accounts/terminal. Say so up front instead of failing on login.
+  function applyFeatureNotes() {
+    const limited = backendFeatures && backendFeatures.accounts === false;
+    const authBtn = document.getElementById('auth-toggle-btn');
+    if (authBtn) authBtn.title = limited ? 'This backend runs code only: no accounts, projects or terminal' : '';
+    const card = document.querySelector('#dash-sandbox-pills')?.closest('.dash-card');
+    document.querySelectorAll('.dash-card').forEach(c => {
+      if (c.querySelector('h3') && /Terminal/.test(c.querySelector('h3').textContent)) {
+        const row = c.querySelector('.status-row');
+        if (row) row.innerHTML = limited
+          ? '<span class="pill needs">Not on this backend</span>'
+          : '<span class="pill live">Cloud terminal</span><span class="pill needs">Log in to use</span>';
+      }
+    });
+    if (typeof resetTerminal === 'function' && termScreen && !authToken) resetTerminal();
   }
 
   // ---- terminal ----
@@ -891,6 +912,8 @@ whole account.
     termPrompt.textContent = promptText();
     if (!backendUrl) {
       termPrint('Connect a backend first (Output tab → Connect).', 't-dim');
+    } else if (backendFeatures && backendFeatures.terminal === false) {
+      termPrint('This backend (Vercel) runs code only: no accounts, projects or terminal. Use the Python backend (Render or self-hosted) for pip/npm/jar/clib installs.', 't-dim');
     } else if (!authToken) {
       termPrint('Log in (top right) to use the terminal. Packages you install are saved to your account in the cloud — never on your computer.', 't-dim');
     } else {

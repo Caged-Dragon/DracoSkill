@@ -1,0 +1,15 @@
+{
+  "name": "dracoskill-backend-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DracoSkill execution API for Vercel: runs code in Vercel Sandbox microVMs",
+  "scripts": {
+    "snapshot": "node scripts/make-snapshot.mjs",
+    "test": "node test/test.mjs"
+  },
+  "dependencies": {
+    "@vercel/sandbox": "^3.8.0"
+  },
+  "engines": { "node": ">=20" }
+}

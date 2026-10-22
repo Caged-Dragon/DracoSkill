@@ -1,5 +1,13 @@
 # DracoSkill — deployment guide (no Docker needed on your PC)
 
+Two routes. Pick one:
+- **Route A (below):** Render runs the full Python backend (accounts, projects, terminal, installs).
+- **Route B (all on Vercel, free):** two Vercel projects from this one repo: the frontend
+  (`Root Directory: frontend`) and the code-running backend (`Root Directory: backend-vercel`).
+  Runs all five languages but has NO accounts, projects or terminal. Follow
+  `backend-vercel/README.md` -> "Setup".
+
+
 Plan: GitHub holds the code -> Render builds and runs the backend (with Docker, in
 Render's cloud) -> Vercel hosts the website.
 

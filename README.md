@@ -11,6 +11,7 @@ dracoskill/
 │   ├── app/                  # the actual product — index.html, styles.css, app.js
 │   ├── assets/               # real image files + config.js (the backend URL lives here)
 │   └── vercel.json           # Vercel static-site config
+├── backend-vercel/           # OPTIONAL second backend for Vercel (Vercel Sandbox). Code running only. See its README.
 ├── backend/
 │   ├── server.py             # entry point — run this
 │   ├── db.py                 # SQLite
@@ -56,6 +57,18 @@ Open [http://localhost:8000/landing/](http://localhost:8000/landing/) for the ma
 Running the backend locally needs gcc, g++, a JDK (`javac`), Node and Python on your machine — that is the *server's* requirement; end users of a deployed site need nothing. `GET /sandboxes` (and the chips in the IDE) show which toolchains are missing. To get the same environment without installing them, use the Docker image in `backend/`.
 
 The app already knows to talk to `http://localhost:8787` — that default lives in one place, `frontend/assets/config.js`, not scattered through the code.
+
+## Two ways to deploy the backend
+
+| | Python backend (`backend/`) | Vercel backend (`backend-vercel/`) |
+|---|---|---|
+| Where | Render (Docker) or your own machine | Vercel, as its own project |
+| Run 5 languages | yes | yes |
+| Accounts / projects / terminal / installs | yes | no |
+| Docker needed | built in the cloud by Render | no |
+
+Both are separate Vercel/Render projects in the same repo; the frontend is always its own Vercel project
+(`Root Directory: frontend`) and just points `BACKEND_URL` at whichever backend you chose.
 
 ## Deploying it
 
