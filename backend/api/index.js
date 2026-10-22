@@ -27,7 +27,12 @@ function send(res, status, body) {
 }
 
 export default async function handler(req, res) {
-  const path = new URL(req.url, 'http://x').pathname.replace(/\/+$/, '') || '/';
+  // vercel.json rewrites every request to this function as /api/index?path=<original path>, so the
+  // route never depends on how Vercel presents req.url. Falls back to req.url for direct calls/tests.
+  const u = new URL(req.url, 'http://x');
+  const forwarded = u.searchParams.get('path');
+  const raw = forwarded !== null && u.pathname.startsWith('/api') ? '/' + forwarded : u.pathname;
+  const path = raw.replace(/\/+$/, '') || '/';
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     res.setHeader('Access-Control-Allow-Origin', '*');

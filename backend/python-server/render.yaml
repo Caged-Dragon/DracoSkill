@@ -1,0 +1,19 @@
+# Optional: only for hosting the full Python backend on Render.
+# Render only auto-detects render.yaml at the repo ROOT, so either copy this file to the
+# repo root, or create the service manually: runtime Docker, Dockerfile path
+# backend/python-server/Dockerfile, Docker context backend/python-server.
+services:
+  - type: web
+    name: dracoskill-backend
+    runtime: docker
+    dockerfilePath: ./backend/python-server/Dockerfile
+    dockerContext: ./backend/python-server
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: dracoskill-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: DRACOSKILL_BASE_URL
+        sync: false

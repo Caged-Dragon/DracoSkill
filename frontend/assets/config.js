@@ -7,5 +7,5 @@
 // Python backend on Render: https://your-service.onrender.com
 // Vercel backend:          https://your-backend-project.vercel.app
 window.DRACOSKILL_CONFIG = {
-  BACKEND_URL: "http://localhost:8787"
+  BACKEND_URL: "https://dracoskill-backend-vercel.vercel.app"
 };

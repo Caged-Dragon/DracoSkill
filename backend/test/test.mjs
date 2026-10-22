@@ -88,6 +88,12 @@ await t('unknown problem 404', async () => assert.equal((await judge('nope', 'py
 
 console.log('HTTP handler');
 await t('GET /health', async () => { const r = await call('GET', '/health'); assert.equal(r.status, 200); assert.equal(r.json.status, 'ok'); });
+await t('rewrite form /api/index?path=... routes correctly', async () => {
+  assert.equal((await call('GET', '/api/index?path=health')).json.status, 'ok');
+  assert.equal((await call('GET', '/api/index?path=problems')).json.problems.length, 3);
+  assert.equal((await call('POST', '/api/index?path=auth/login', {})).status, 501);
+  assert.equal((await call('GET', '/api/index?path=')).status, 404);
+});
 await t('GET /problems has 5-language starters', async () => { const r = await call('GET', '/problems'); assert.equal(r.json.problems.length, 3); assert.deepEqual(Object.keys(r.json.problems[0].starter).sort(), ['c', 'cpp', 'java', 'javascript', 'python']); });
 await t('POST /execute works', async () => { const r = await call('POST', '/execute', { language: 'python', code: 'print(6*7)' }); assert.equal(r.status, 200); assert.equal(r.json.stdout.trim(), '42'); });
 await t('POST /submit works', async () => { const r = await call('POST', '/submit', { problemId: 'sum-two', language: 'python', code: sols.python }); assert.equal(r.json.verdict, 'Accepted'); assert.equal(r.json.saved, false); });

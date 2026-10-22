@@ -1,4 +1,5 @@
-{
+// Generated from the Python judge's problem set. Plain JS module on purpose (no JSON import attributes).
+export default {
  "sum-two": {
   "id": "sum-two",
   "title": "Sum of Two Numbers",
@@ -87,4 +88,4 @@
    }
   ]
  }
-}
+};

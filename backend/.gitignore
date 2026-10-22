@@ -1,0 +1,10 @@
+node_modules
+.vercel
+.env*.local
+__pycache__/
+*.pyc
+python-server/*.db
+python-server/*.db-wal
+python-server/*.db-shm
+python-server/workspaces/
+python-server/certificate-template/output/

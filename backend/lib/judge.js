@@ -1,7 +1,7 @@
 // Same verdict rules as backend/judge.py, but all tests share ONE sandbox:
 // compile once, run every test case. Hidden tests still run for real; their
 // input and the submitter's output are just not returned.
-import problems from './problems.json' with { type: 'json' };
+import problems from './problems.js';
 import { RUN_LANGUAGES, RunSession, compileFailure, MAX_CODE, getFactory } from './runner.js';
 
 export function listProblems() {
