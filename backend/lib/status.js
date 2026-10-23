@@ -1,6 +1,7 @@
 // What the sandbox image can actually run. Probing costs one sandbox creation,
 // so the answer is cached for 15 minutes per warm function instance.
-import { RUN_LANGUAGES, LABELS, getFactory } from './runner.js';
+import { RUN_LANGUAGES, LABELS, getFactory, setupUrl } from './runner.js';
+import { findSnapshotId } from './toolchain.js';
 
 const TOOLS = {
   python: ['python3', 'python3 --version'],
@@ -12,9 +13,11 @@ const TOOLS = {
 let cache = null;
 
 export async function describe(factory = getFactory()) {
-  if (cache && Date.now() - cache.at < 15 * 60_000) return cache.value;
+  const ttl = cache && cache.complete ? 15 * 60_000 : 20_000;  // re-probe quickly while something is missing
+  if (cache && Date.now() - cache.at < ttl) return cache.value;
   const versions = {};
   let probeError = null;
+  const snapshotId = await findSnapshotId().catch(() => null);
   let sb;
   try {
     sb = await factory();
@@ -39,12 +42,12 @@ export async function describe(factory = getFactory()) {
     features: { accounts: false, projects: false, terminal: false, certificates: false },
     isolation: {
       driver: 'vercel-sandbox', perRunMicroVM: true, networkNamespace: true, perUserUid: false,
-      snapshot: !!process.env.DRACO_SNAPSHOT_ID,
+      snapshot: !!snapshotId,
       note: probeError ? `Could not probe the sandbox: ${probeError}` :
-        (process.env.DRACO_SNAPSHOT_ID ? 'Each run is a fresh microVM with all outbound network blocked.' :
-          'DRACO_SNAPSHOT_ID is not set: using the default image. Create the toolchain snapshot (README).'),
+        (snapshotId ? 'Each run is a fresh microVM with all outbound network blocked.' :
+          `No toolchain snapshot yet: using the default image. Open ${setupUrl()} to install the compilers.`),
     },
   };
-  if (!probeError) cache = { at: Date.now(), value };
+  if (!probeError) cache = { at: Date.now(), value, complete: sandboxes.slice(0, 5).every((x) => x.available) };
   return value;
 }

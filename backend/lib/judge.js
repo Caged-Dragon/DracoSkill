@@ -2,7 +2,7 @@
 // compile once, run every test case. Hidden tests still run for real; their
 // input and the submitter's output are just not returned.
 import problems from './problems.js';
-import { RUN_LANGUAGES, RunSession, compileFailure, MAX_CODE, getFactory } from './runner.js';
+import { RUN_LANGUAGES, RunSession, compileFailure, MAX_CODE, getFactory, setupUrl } from './runner.js';
 
 export function listProblems() {
   return Object.values(problems).map(({ id, title, difficulty, description, starter }) => ({ id, title, difficulty, description, starter }));
@@ -21,7 +21,7 @@ export async function judge(problemId, language, code, factory = getFactory()) {
     const c = await s.prepare();
     if (c && c.error) return [{ error: c.error }, 400];
     if (c && c.exitCode !== 0) {
-      if (c.exitCode === 127 && /not found/i.test(c.stderr || '')) return [{ error: `${language} isn't installed in the sandbox image.` }, 503];
+      if (c.exitCode === 127 && /not found/i.test(c.stderr || '')) return [{ error: `${language} isn't installed in the sandbox image yet. One-time fix: open ${setupUrl()} and click "Start setup".` }, 503];
       const f = compileFailure(c);
       return [{
         verdict: 'Compilation Error',

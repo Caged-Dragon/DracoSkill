@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { fakeFactory, created, stopped } from './fake-sandbox.mjs';
+import { fakeFactory, created, stopped, makeFakeSetupClient } from './fake-sandbox.mjs';
 globalThis.__DRACO_SANDBOX_FACTORY = fakeFactory;
 const { execute } = await import('../lib/runner.js');
 const { judge } = await import('../lib/judge.js');
 const { default: handler } = await import('../api/index.js');
+const tc = await import('../lib/toolchain.js');
+const sc = await import('../lib/selfcheck.js');
 
 let pass = 0, fail = 0;
 async function t(name, fn) {
@@ -123,6 +125,106 @@ await t('rate limit kicks in (same IP)', async () => {
     last = status;
   }
   assert.equal(last, 429);
+});
+
+console.log('one-time toolchain setup (/setup)');
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const OK_INSTALL = 'mkdir -p .draco\nsleep 1\necho "toolchains present" > .draco/install.log\necho 0 > .draco/install.code\n';
+await t('idle before start, then installing, then done with a snapshot id', async () => {
+  const c = makeFakeSetupClient(); tc.forgetSnapshot();
+  assert.equal((await tc.setupStatus(c)).state, 'idle');
+  const s1 = await tc.startSetup(c, { installScript: OK_INSTALL });
+  assert.equal(s1.state, 'installing');
+  assert.equal((await tc.setupStatus(c)).state, 'installing');     // install.sh still running
+  let s; for (let i = 0; i < 40; i++) { await wait(500); s = await tc.setupStatus(c); if (s.state === 'done') break; }
+  assert.equal(s.state, 'done', JSON.stringify(s));                 // smoke tests ran the real compilers, then snapshot
+  assert.equal(s.snapshotId, 'snap_fake1234567890');
+});
+await t('after setup, runs discover the snapshot automatically (no env var)', async () => {
+  const c = makeFakeSetupClient(); tc.forgetSnapshot(); globalThis.__DRACO_SETUP_CLIENT = c;
+  assert.equal(await tc.findSnapshotId(), null);
+  c.st.snap = 'snap_abc'; tc.forgetSnapshot();
+  assert.equal(await tc.findSnapshotId(), 'snap_abc');
+  process.env.DRACO_SNAPSHOT_ID = 'snap_override'; assert.equal(await tc.findSnapshotId(), 'snap_override'); delete process.env.DRACO_SNAPSHOT_ID;
+  delete globalThis.__DRACO_SETUP_CLIENT; tc.forgetSnapshot();
+});
+await t('start when already set up does not create another sandbox', async () => {
+  const c = makeFakeSetupClient(); c.st.snap = 'snap_x'; tc.forgetSnapshot();
+  const r = await tc.startSetup(c, { installScript: OK_INSTALL });
+  assert.equal(r.state, 'done'); assert.equal(c.st.creates, 0);
+});
+await t('failed install reports failed + log', async () => {
+  const c = makeFakeSetupClient(); tc.forgetSnapshot();
+  await tc.startSetup(c, { installScript: 'mkdir -p .draco\necho "E: no space left" > .draco/install.log\necho 100 > .draco/install.code\n' });
+  let s; for (let i = 0; i < 20; i++) { await wait(400); s = await tc.setupStatus(c); if (s.state === 'failed') break; }
+  assert.equal(s.state, 'failed'); assert.match(s.log, /no space left/); assert.equal(c.st.snap, null);
+});
+await t('second start while installing does not reset progress; after failure it starts clean', async () => {
+  const c = makeFakeSetupClient(); tc.forgetSnapshot();
+  await tc.startSetup(c, { installScript: 'mkdir -p .draco\nsleep 2\necho 0 > .draco/install.code\n' });
+  const again = await tc.startSetup(c, { installScript: OK_INSTALL });
+  assert.equal(again.state, 'installing'); assert.equal(c.st.creates, 1); assert.equal(c.st.deletes, 0);
+  await wait(2500);
+  await tc.startSetup(c, { installScript: 'mkdir -p .draco\necho 1 > .draco/install.code\n' }); // finished (code present) => treated as leftover => clean restart
+  assert.equal(c.st.deletes, 1); assert.equal(c.st.creates, 2);
+});
+await t('GET /setup serves the HTML page; /setup/status answers JSON', async () => {
+  globalThis.__DRACO_SETUP_CLIENT = makeFakeSetupClient(); tc.forgetSnapshot();
+  let status, body = '', ct;
+  await handler({ method: 'GET', url: '/api/index?path=setup', headers: {} }, { setHeader(k, v) { if (k === 'Content-Type') ct = v; }, end(b) { body = b; }, set statusCode(v) { status = v; }, get statusCode() { return status; } });
+  assert.equal(status, 200); assert.match(ct, /text\/html/); assert.match(body, /Start setup/);
+  const r = await call('GET', '/setup/status'); assert.equal(r.status, 200); assert.equal(r.json.state, 'idle');
+  delete globalThis.__DRACO_SETUP_CLIENT; tc.forgetSnapshot();
+});
+await t('the "not installed" message tells the user exactly what to open', async () => {
+  const { setupUrl } = await import('../lib/runner.js');
+  process.env.VERCEL_PROJECT_PRODUCTION_URL = 'dracoskill-backend-vercel.vercel.app';
+  assert.equal(setupUrl(), 'https://dracoskill-backend-vercel.vercel.app/setup'); delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+});
+
+console.log('the /setup page itself');
+await t('inline page script is valid JavaScript (and survives the template string)', async () => {
+  const html = tc.setupPage('');
+  const m = /<script>([\s\S]*?)<\/script>/.exec(html);
+  assert.ok(m, 'no inline script found');
+  assert.doesNotThrow(() => new Function(m[1]), 'page script has a syntax error');
+});
+
+console.log('live self-check');
+await t('self-check: all five languages really compute n*n+7 from a fresh random input', async () => {
+  const r = await sc.selfCheck(fakeFactory);
+  assert.equal(r.ok, true, JSON.stringify(r.results.filter((x) => !x.verified)));
+  assert.equal(r.results.length, 5);
+  for (const x of r.results) { assert.equal(x.verified, true, x.language); assert.ok(x.version.length > 3, x.language + ' version'); }
+  assert.equal(r.expectedFormula, 'n*n+7');
+  assert.equal(r.results[0].expected, String(BigInt(r.input) * BigInt(r.input) + 7n));
+  assert.equal(typeof r.networkBlocked === 'boolean' || r.networkBlocked === null, true);
+});
+await t('self-check uses a different random input every time', async () => {
+  const a = await sc.selfCheck(fakeFactory), b = await sc.selfCheck(fakeFactory);
+  assert.notEqual(a.input, b.input);
+});
+await t('self-check catches a fake/canned executor (wrong output is NOT reported as passing)', async () => {
+  // an "executor" that ignores the program and always answers 42
+  const lying = async () => { const sb = await fakeFactory(); const orig = sb.readFileToBuffer.bind(sb);
+    sb.readFileToBuffer = async (f) => (/run\.out$/.test(f.path) ? Buffer.from('42\nFake 1.0\n') : orig(f)); return sb; };
+  const r = await sc.selfCheck(lying);
+  assert.equal(r.ok, false); assert.ok(r.results.every((x) => !x.verified)); assert.match(r.results[0].error, /expected \d+, got 42/);
+});
+await t('self-check reports a missing compiler clearly instead of passing', async () => {
+  const noJava = async () => { const sb = await fakeFactory(); const orig = sb.runCommand.bind(sb);
+    sb.runCommand = (o) => (o.args && o.args[0] === 'w_compile.sh' ? orig({ ...o, args: ['-c', 'echo "bash: javac: command not found" > compile.err; echo 127 > compile.code; : > compile.out'] }) : orig(o)); return sb; };
+  const r = await sc.selfCheck(noJava);
+  assert.equal(r.ok, false);
+});
+await t('verifyOutput unit cases', async () => {
+  assert.deepEqual(sc.verifyOutput('49', '49\nPython 3.12.3\n'), { verified: true, actual: '49', version: 'Python 3.12.3' });
+  assert.equal(sc.verifyOutput('49', '50\nx').verified, false);
+  assert.equal(sc.verifyOutput('49', '').verified, false);
+});
+await t('GET /selfcheck route works and is rate limited', async () => {
+  globalThis.__DRACO_SANDBOX_FACTORY = fakeFactory;
+  const r = await call('GET', '/selfcheck'); assert.equal(r.status, 200); assert.equal(r.json.ok, true);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

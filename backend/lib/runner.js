@@ -9,6 +9,7 @@
 // and reference with DRACO_SNAPSHOT_ID. Without it, runs use Vercel's default
 // image, and any missing toolchain is reported clearly instead of crashing.
 import { Sandbox } from '@vercel/sandbox';
+import { findSnapshotId } from './toolchain.js';
 
 export const RUN_LANGUAGES = ['python', 'javascript', 'java', 'c', 'cpp'];
 export const LABELS = { python: 'Python', javascript: 'JavaScript', java: 'Java', c: 'C', cpp: 'C++' };
@@ -24,7 +25,8 @@ const JAVA_FLAGS = '-Xmx256m -Xss1m -XX:+UseSerialGC -XX:TieredStopAtLevel=1';
 // Tests replace this to run against a local stand-in instead of real microVMs.
 export async function defaultFactory() {
   const params = { timeout: 90_000, persistent: false, networkPolicy: 'deny-all', resources: { vcpus: 1 } };
-  if (process.env.DRACO_SNAPSHOT_ID) params.source = { type: 'snapshot', snapshotId: process.env.DRACO_SNAPSHOT_ID };
+  const snapshotId = await findSnapshotId(); // env override, else the snapshot made by /setup
+  if (snapshotId) params.source = { type: 'snapshot', snapshotId };
   return Sandbox.create(params);
 }
 export function getFactory() {
@@ -124,9 +126,14 @@ export class RunSession {
 // bash reports a missing program as exit 127 + 'not found'; require both so a user program that merely exits 127 isn't misreported.
 const missingTool = (r) => r.exitCode === 127 && /not found/i.test(r.stderr || '');
 
+export function setupUrl() {
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  return host ? `https://${host}/setup` : '<your backend address>/setup';
+}
+
 function missingMessage(language) {
-  return `${LABELS[language]} isn't installed in the sandbox image. Create the toolchain snapshot once ` +
-         `(see backend-vercel/README.md → "One-time setup") and set DRACO_SNAPSHOT_ID.`;
+  return `${LABELS[language]} isn't installed in the sandbox image yet. One-time fix: open ${setupUrl()} in your browser and click "Start setup". ` +
+         `It takes a few minutes; Python and JavaScript work in the meantime.`;
 }
 
 export function compileFailure(c) {

@@ -25,7 +25,11 @@ export async function fakeFactory() {
     async readFileToBuffer({ path: p }) {
       try { return await readFile(map(p)); } catch { return null; }
     },
-    runCommand({ cmd, args = [], cwd }) {
+    runCommand({ cmd, args = [], cwd, detached }) {
+      if (detached) { // keep running after we return, like a real detached command
+        execFile(cmd, args, { cwd: cwd ? map(cwd) : dir }, () => {});
+        return Promise.resolve({});
+      }
       return new Promise((resolve) => {
         execFile(cmd, args, { cwd: cwd ? map(cwd) : dir, timeout: 120_000, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
           resolve({ exitCode: err ? (typeof err.code === 'number' ? err.code : 1) : 0, stdout: async () => stdout, stderr: async () => stderr });
@@ -33,5 +37,23 @@ export async function fakeFactory() {
       });
     },
     async stop() { stopped++; await rm(dir, { recursive: true, force: true }); },
+  };
+}
+
+// Stand-in for the setup client (lib/toolchain.js): one named sandbox + one snapshot slot, in memory.
+export function makeFakeSetupClient() {
+  const st = { sbx: null, snap: null, creates: 0, deletes: 0 };
+  return {
+    st,
+    findSnapshot: async () => st.snap,
+    getSandbox: async () => st.sbx,
+    async createSandbox() {
+      st.creates++;
+      const sb = await fakeFactory();
+      sb.delete = async () => { st.deletes++; st.sbx = null; };
+      sb.snapshot = async () => { st.snap = 'snap_fake1234567890'; return { snapshotId: st.snap }; };
+      st.sbx = sb;
+      return sb;
+    },
   };
 }

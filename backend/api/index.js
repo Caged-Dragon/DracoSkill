@@ -6,6 +6,8 @@
 import { execute } from '../lib/runner.js';
 import { judge, listProblems } from '../lib/judge.js';
 import { describe } from '../lib/status.js';
+import { setupPage, startSetup, setupStatus } from '../lib/toolchain.js';
+import { selfCheck } from '../lib/selfcheck.js';
 
 const NOT_HERE = /^\/(auth|projects|terminal|certificates|confirmation|submissions)(\/|$)/;
 const hits = new Map();
@@ -41,6 +43,22 @@ export default async function handler(req, res) {
     return res.end();
   }
   try {
+    if (req.method === 'GET' && path === '/setup') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.end(setupPage());
+    }
+    if (path === '/selfcheck' && req.method === 'GET') {
+      const ipc = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+      if (limited('selfcheck:' + ipc, 4)) return send(res, 429, { error: 'Self-check runs at most 4 times a minute.' });
+      return send(res, 200, await selfCheck());
+    }
+    if (path === '/setup/status' && req.method === 'GET') return send(res, 200, await setupStatus());
+    if (path === '/setup/start' && req.method === 'POST') {
+      const ip0 = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+      if (limited('setup:' + ip0, 6)) return send(res, 429, { error: 'Too many setup requests. Wait a minute.' });
+      return send(res, 200, await startSetup());
+    }
     if (req.method === 'GET' && path === '/health') return send(res, 200, { status: 'ok', service: 'dracoskill-execution', backend: 'vercel-sandbox' });
     if (req.method === 'GET' && path === '/sandboxes') return send(res, 200, await describe());
     if (req.method === 'GET' && path === '/problems') return send(res, 200, { problems: listProblems() });
