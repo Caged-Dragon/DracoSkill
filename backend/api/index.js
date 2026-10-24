@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       return send(res, 200, await startSetup());
     }
     if (req.method === 'GET' && path === '/health') return send(res, 200, { status: 'ok', service: 'dracoskill-execution', backend: 'vercel-sandbox' });
-    if (req.method === 'GET' && path === '/sandboxes') return send(res, 200, await describe());
+    if (req.method === 'GET' && path === '/sandboxes') return send(res, 200, await describe(undefined, { probe: new URL(req.url, 'http://x').searchParams.get('probe') === '1' }));
     if (req.method === 'GET' && path === '/problems') return send(res, 200, { problems: listProblems() });
     if (req.method === 'GET' && path === '/auth/me') return send(res, 200, { authenticated: false, username: null });
 

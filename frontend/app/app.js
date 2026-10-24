@@ -106,14 +106,33 @@ whole account.
   const runLabel = document.getElementById('run-label');
   const connectRow = document.getElementById('connect-row');
   const saveBtn = document.getElementById('save-btn');
+  const consoleEl = document.getElementById('console');
+  const sbPos = document.getElementById('sb-pos');
+  const sbLang = document.getElementById('sb-lang');
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+  document.getElementById('run-kbd').textContent = isMac ? '\u2318\u21B5' : 'Ctrl+Enter';
+  runBtn.title = 'Run (' + (isMac ? 'Cmd' : 'Ctrl') + '+Enter)';
+
+  function updateDirty() {
+    const d = document.getElementById('dirty-dot');
+    d.hidden = !(currentProjectId && currentFile && savedContent[currentFile] !== undefined && editor.value !== savedContent[currentFile]);
+  }
+  const edApi = DracoEditor.attach(editor, {
+    lang: 'python',
+    onCursor: (l, c) => { sbPos.textContent = 'Line ' + l + ', column ' + c; },
+    onChange: updateDirty
+  });
 
   function showEmptyProjectState() {
     currentFile = null;
     activeFiles = {};
     savedContent = {};
     editor.value = '';
-    fname.textContent = '(no file selected)';
-    output.innerHTML = '<span class="hint">Add a file on the left to get started.</span>';
+    fname.textContent = 'No file open';
+    sbLang.textContent = '';
+    document.getElementById('editor-dot').className = 'ft-dot';
+    updateDirty();
+    output.innerHTML = '<span class="hint">Add a file in the panel on the left to start.</span>';
     connectRow.style.display = 'none';
     runBtn.style.visibility = 'hidden';
     renderFileTree();
@@ -162,14 +181,18 @@ whole account.
   function loadFile(name) {
     currentFile = name;
     fname.textContent = name;
+    const lang = activeFiles[name].lang;
+    edApi.setLang(lang);                      // set the language first so the first paint is coloured correctly
     editor.value = activeFiles[name].content;
     savedContent[name] = activeFiles[name].content;
+    sbLang.textContent = LANG_LABEL[lang] || 'Plain text';
+    document.getElementById('editor-dot').className = 'ft-dot ' + (LANG_DOT[lang] || 'dot-md');
+    updateDirty();
     renderFileTree();
-    const lang = activeFiles[name].lang;
-    connectRow.style.display = (lang !== 'text') ? 'flex' : 'none';
+    connectRow.style.display = (lang !== 'text' && !backendUrl) ? 'flex' : 'none';
     output.innerHTML = lang === 'text'
       ? '<span class="hint">This file isn\'t runnable on its own' + (/\.(h|hpp|hh)$/i.test(name) ? ' — it\'s included by your .c/.cpp files.' : '.') + '</span>'
-      : 'Press Run to execute ' + escapeHtml(name) + ' for real (' + LANG_LABEL[lang] + (currentProjectId ? ', whole project' : '') + ').';
+      : 'Run ' + escapeHtml(name) + ' to see its output here (' + LANG_LABEL[lang] + (currentProjectId ? ', whole project' : '') + ').';
     runBtn.style.visibility = lang === 'text' ? 'hidden' : 'visible';
   }
 
@@ -182,7 +205,7 @@ whole account.
     activeFiles = demoFiles;
     document.getElementById('project-bar').style.display = 'none';
     document.getElementById('ft-add-row').style.display = 'none';
-    document.getElementById('ft-label').textContent = 'Project (sign in to save your own)';
+    document.getElementById('ft-label').textContent = 'Sample files';
     saveBtn.style.display = 'none';
     loadFile('main.py');
   }
@@ -199,6 +222,7 @@ whole account.
       });
       const data = await res.json();
       myProjects = data.projects || [];
+      renderDashboard();
       const sel = document.getElementById('project-select');
       sel.innerHTML = myProjects.length
         ? myProjects.map(p => '<option value="' + p.id + '">' + escapeHtml(p.name) + '</option>').join('')
@@ -301,6 +325,7 @@ whole account.
       const data = await res.json();
       if (!res.ok) { if (!silent) alert(data.error || 'Save failed'); return false; }
       savedContent[currentFile] = editor.value;
+      updateDirty();
       return true;
     } catch (err) {
       if (!silent) alert('Could not reach backend to save.');
@@ -331,6 +356,7 @@ whole account.
     target.classList.add('active');
     if (name === 'problems') { loadProblems(); loadSubmissionHistory(); }
     if (name === 'certs') loadCertState();
+    if (name === 'dashboard') renderDashboard();
   }
 
   // ---- real, sandboxed JavaScript execution via a terminable Worker ----
@@ -421,20 +447,11 @@ whole account.
 
   runBtn.addEventListener('click', runCurrentFile);
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.getElementById('view-ide').classList.contains('active')) {
-      e.preventDefault(); runCurrentFile();
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      if (document.getElementById('view-ide').classList.contains('active')) { e.preventDefault(); runCurrentFile(); }
+      else if (document.getElementById('view-problems').classList.contains('active')) { e.preventDefault(); document.getElementById('submit-btn').click(); }
     }
   });
-  // Tab inserts spaces in the editor instead of moving focus away
-  editor.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault();
-      const st = editor.selectionStart, en = editor.selectionEnd;
-      editor.value = editor.value.slice(0, st) + '    ' + editor.value.slice(en);
-      editor.selectionStart = editor.selectionEnd = st + 4;
-    }
-  });
-
   async function runCurrentFile() {
     if (!currentFile || !activeFiles[currentFile]) {
       output.innerHTML = '<span class="hint">No file selected — add or pick a file first.</span>';
@@ -445,20 +462,17 @@ whole account.
     showConsoleTab('output');
     const code = editor.value;
 
-    runBtn.classList.remove('heating');
-    void runBtn.offsetWidth;
-    runBtn.classList.add('heating');
-    runLabel.textContent = 'Running…';
-    output.innerHTML = '<span class="hint">' + (lang === 'java' || lang === 'c' || lang === 'cpp' ? 'Compiling and running…' : 'Executing…') + '</span>';
-
-    await new Promise(r => setTimeout(r, 200));
+    runBtn.disabled = true;
+    consoleEl.classList.add('is-running');   // lights the ember seam for exactly as long as code is executing
+    runLabel.textContent = 'Running';
+    output.innerHTML = '<span class="hint">' + (lang === 'java' || lang === 'c' || lang === 'cpp' ? 'Compiling and running…' : 'Running…') + '</span>';
 
     try {
       if (!backendUrl) {
         if (lang === 'javascript') {
           renderResult(await runJavaScriptSandboxed(code, 5000), 'Ran in a browser worker — connect a backend for stdin, require() and packages.');
         } else {
-          output.innerHTML = '<span class="hint">' + LANG_LABEL[lang] + ' runs on the DracoSkill server, not in your browser.<br>Start <code>server.py</code> (or use your deployed backend), paste its URL below and hit Connect.</span>';
+          output.innerHTML = '<span class="hint">' + LANG_LABEL[lang] + ' runs on the DracoSkill backend, which isn\'t connected. Enter its address below and choose Connect.</span>';
           connectRow.style.display = 'flex';
         }
       } else {
@@ -473,7 +487,9 @@ whole account.
         output.innerHTML = '<span class="err-line">Could not reach ' + escapeHtml(backendUrl) + ' (' + escapeHtml(err.message || String(err)) + '). If the page is hosted on https, the backend must be https too.</span>';
       }
     }
-    runLabel.textContent = '▶ Run';
+    runLabel.textContent = 'Run';
+    runBtn.disabled = false;
+    consoleEl.classList.remove('is-running');
   }
 
   function renderServerResult(r) {
@@ -489,11 +505,11 @@ whole account.
       if (r.truncated) html += '\n<span class="hint">(output truncated)</span>';
     }
     const bits = [];
-    if (comp && !r.compileError) bits.push('compiled in ' + comp.timeMs + ' ms');
-    if (!r.compileError) bits.push('ran in ' + r.timeMs + ' ms');
-    if (typeof r.exitCode === 'number' && r.exitCode !== 0 && !r.compileError) bits.push('exit code ' + r.exitCode);
-    if (r.skippedFiles && r.skippedFiles.length) bits.push('skipped unsafe file names: ' + r.skippedFiles.join(', '));
-    if (bits.length) html += '\n\n<span class="meta-line">' + escapeHtml(bits.join(' · ')) + '</span>';
+    if (comp && !r.compileError) bits.push('Compiled in ' + comp.timeMs + ' ms');
+    if (!r.compileError) bits.push((bits.length ? 'ran' : 'Ran') + ' in ' + r.timeMs + ' ms');
+    if (typeof r.exitCode === 'number' && r.exitCode !== 0 && !r.compileError) bits.push('exited with code ' + r.exitCode);
+    if (r.skippedFiles && r.skippedFiles.length) bits.push('skipped files with unsafe names: ' + r.skippedFiles.join(', '));
+    if (bits.length) html += '\n\n<span class="meta-line">' + escapeHtml(bits.join(', ')) + '.</span>';
     output.innerHTML = html;
   }
 
@@ -534,7 +550,7 @@ whole account.
   async function loadProblems() {
     const list = document.getElementById('problem-list');
     if (!backendUrl) {
-      list.innerHTML = '<div class="ft-label">Connect a backend from the IDE tab first</div>';
+      list.innerHTML = '<div class="ft-label">No backend connected. Connect one in the Editor tab.</div>';
       return;
     }
     list.innerHTML = '<div class="ft-label">Loading…</div>';
@@ -544,8 +560,9 @@ whole account.
       problemsData = {};
       (data.problems || []).forEach(p => { problemsData[p.id] = p; });
       renderProblemList();
+      renderDashboard();
     } catch (err) {
-      list.innerHTML = '<div class="ft-label">Could not reach the backend (' + escapeHtml(err.message || String(err)) + ')</div>';
+      list.innerHTML = '<div class="ft-label">Could not reach the backend: ' + escapeHtml(err.message || String(err)) + '</div>';
     }
   }
 
@@ -564,15 +581,17 @@ whole account.
   function selectProblem(id) {
     currentProblemId = id;
     const p = problemsData[id];
-    document.getElementById('problem-desc').innerHTML = '<h3>' + escapeHtml(p.title) + '</h3><span class="diff-pill diff-' + p.difficulty + '">' + escapeHtml(p.difficulty) + '</span><br><br>' + escapeHtml(p.description);
+    document.getElementById('problem-desc').innerHTML = '<h3>' + escapeHtml(p.title) + '</h3><span class="diff-pill diff-' + p.difficulty + '">' + escapeHtml(p.difficulty) + '</span><p>' + escapeHtml(p.description) + '</p>';
     document.getElementById('problem-editor').value = p.starter[problemLang] || '';
-    document.getElementById('problem-output').innerHTML = '<span class="hint">Press Submit to run this against the test cases.</span>';
+    document.getElementById('problem-output').innerHTML = '<span class="hint">Submit runs your code against every test case, including hidden ones.</span>';
     renderProblemList();
   }
 
+  const probEd = DracoEditor.attach(document.getElementById('problem-editor'), { lang: 'python' });
   document.querySelectorAll('.lang-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       problemLang = btn.dataset.lang;
+      probEd.setLang(problemLang);
       document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b === btn));
       if (currentProblemId) {
         document.getElementById('problem-editor').value = problemsData[currentProblemId].starter[problemLang] || '';
@@ -586,6 +605,9 @@ whole account.
     if (!backendUrl) { out.innerHTML = '<span class="hint">Connect a backend from the IDE tab first.</span>'; return; }
     const code = document.getElementById('problem-editor').value;
     out.innerHTML = '<span class="hint">Judging…</span>';
+    const panel = document.getElementById('verdict-panel');
+    const submitBtn = document.getElementById('submit-btn');
+    panel.classList.add('is-running'); submitBtn.disabled = true; document.getElementById('submit-label').textContent = 'Judging';
     try {
       const res = await fetch(backendUrl.replace(/\/$/, '') + '/submit', {
         method: 'POST',
@@ -597,6 +619,8 @@ whole account.
       if (currentUsername) loadSubmissionHistory();
     } catch (err) {
       out.innerHTML = '<span class="err-line">Could not reach backend: ' + escapeHtml(err.message || String(err)) + '</span>';
+    } finally {
+      panel.classList.remove('is-running'); submitBtn.disabled = false; document.getElementById('submit-label').textContent = 'Submit';
     }
   });
 
@@ -609,18 +633,18 @@ whole account.
     const okClass = data.verdict === 'Accepted' ? 'verdict-Accepted' : 'verdict-bad';
     let html = '<div class="verdict-banner ' + okClass + '">' + escapeHtml(data.verdict) + '</div>';
     (data.results || []).forEach((r, i) => {
-      const icon = r.pass ? '<span class="tp">pass</span>' : '<span class="tf">fail</span>';
+      const icon = r.pass ? '<span class="tp">Pass</span>' : '<span class="tf">Fail</span>';
       if (r.hidden) {
-        html += '<div class="test-row">' + icon + ' — hidden test ' + (i + 1) + '</div>';
+        html += '<div class="test-row">' + icon + '<span>Hidden test ' + (i + 1) + '</span></div>';
       } else {
-        html += '<div class="test-row">' + icon + ' — test ' + (i + 1) + ': input <code>' + escapeHtml(r.input) + '</code> expected <code>' + escapeHtml(r.expected) + '</code> got <code>' + escapeHtml(r.actual !== undefined ? r.actual : '') + '</code></div>';
+        html += '<div class="test-row">' + icon + '<span>Test ' + (i + 1) + ': input <code>' + escapeHtml(r.input) + '</code> expected <code>' + escapeHtml(r.expected) + '</code> got <code>' + escapeHtml(r.actual !== undefined ? r.actual : '') + '</code></span></div>';
       }
       if (r.stderr) {
         html += '<div class="test-row err-line">' + escapeHtml(r.stderr.split('\n')[0]) + '</div>';
       }
     });
     if (data.saved === false) {
-      html += '<div class="test-row hint">Log in to save this to your history.</div>';
+      html += '<div class="test-row hint">Log in to keep this in your submission history.</div>';
     } else if (data.saved === true) {
       html += '<div class="test-row hint">Saved to your history.</div>';
     }
@@ -631,7 +655,7 @@ whole account.
   function wireAuthPanel() {
     document.getElementById('auth-toggle-btn').addEventListener('click', () => {
       const panel = document.getElementById('auth-panel');
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
     });
     document.getElementById('auth-login-btn').addEventListener('click', () => submitAuth('/auth/login'));
     document.getElementById('auth-register-btn').addEventListener('click', () => submitAuth('/auth/register'));
@@ -667,14 +691,16 @@ whole account.
     if (currentUsername) {
       area.innerHTML = '<div class="auth-username-display">' + escapeHtml(currentUsername) + '<button id="auth-logout-btn">Log out</button></div>';
       document.getElementById('auth-logout-btn').addEventListener('click', doLogout);
+      renderDashboard();
     } else {
+      renderDashboard();
       area.innerHTML =
-        '<button class="tab" id="auth-toggle-btn">Log in</button>' +
+        '<button class="btn btn-sm" id="auth-toggle-btn">Log in</button>' +
         '<div class="auth-panel" id="auth-panel" style="display:none;">' +
-        '<input type="text" id="auth-username" placeholder="username" autocomplete="username" />' +
-        '<input type="password" id="auth-password" placeholder="password" autocomplete="current-password" />' +
-        '<div class="auth-panel-actions"><button id="auth-login-btn">Log in</button><button id="auth-register-btn" class="secondary">Register</button></div>' +
-        '<div class="auth-error" id="auth-error"></div></div>';
+        '<label class="field">Username<input type="text" id="auth-username" autocomplete="username" /></label>' +
+        '<label class="field">Password<input type="password" id="auth-password" autocomplete="current-password" /></label>' +
+        '<div class="auth-panel-actions"><button class="btn btn-ember btn-sm" id="auth-login-btn">Log in</button><button class="btn btn-sm secondary" id="auth-register-btn">Create account</button></div>' +
+        '<div class="auth-error" id="auth-error" role="alert"></div></div>';
       wireAuthPanel();
     }
   }
@@ -691,6 +717,8 @@ whole account.
     }
     authToken = null;
     currentUsername = null;
+    myProjects = [];
+    certProgress = null;
     renderAuthArea();
     document.getElementById('history-box').style.display = 'none';
     enterDemoMode();
@@ -726,11 +754,11 @@ whole account.
   async function loadCertState() {
     const el = document.getElementById('cert-content');
     if (!backendUrl) {
-      el.innerHTML = '<span class="hint">Connect a backend from the IDE tab first.</span>';
+      el.innerHTML = '<p class="hint">No backend connected. Connect one in the Editor tab.</p>';
       return;
     }
     if (!currentUsername) {
-      el.innerHTML = '<span class="hint">Sign in (top right) to track your progress toward a certificate.</span>';
+      el.innerHTML = '<p class="hint">Log in (top right) to track your progress toward a certificate.</p>';
       return;
     }
     el.innerHTML = '<span class="hint">Loading…</span>';
@@ -739,6 +767,10 @@ whole account.
         headers: { 'X-Session-Token': authToken }
       });
       const mine = await mineRes.json();
+      if (mineRes.status === 501) {
+        el.innerHTML = '<p class="hint">This backend only runs code, so it cannot issue certificates. The full DracoSkill backend does.</p>';
+        return;
+      }
       if (mine.issued) {
         renderCertificateCard(mine);
         return;
@@ -747,6 +779,7 @@ whole account.
         headers: { 'X-Session-Token': authToken }
       });
       const prog = await progRes.json();
+      if (!progRes.ok) { el.innerHTML = '<p class="err-line">' + escapeHtml(prog.error || 'Could not load your progress.') + '</p>'; return; }
       renderCertProgress(prog);
     } catch (err) {
       el.innerHTML = '<span class="err-line">Could not reach backend: ' + escapeHtml(err.message || String(err)) + '</span>';
@@ -785,42 +818,41 @@ whole account.
     const issuedDate = new Date(cert.issued_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
     el.innerHTML =
       '<div class="cert-card"><div class="cert-card-inner">' +
-        '<div class="cert-watermark">DRACOSKILL</div>' +
         '<div class="cert-top">' +
           '<img src="../assets/dracoskill-mark.png" alt="DracoSkill" />' +
-          '<div class="cert-title">PROBLEM SOLVING CERTIFICATE</div>' +
+          '<div class="cert-title">DracoSkill certificate of problem solving</div>' +
           '<div class="cert-qr-top"><div id="cert-qr" class="cert-qr"></div></div>' +
         '</div>' +
         '<div class="cert-body">' +
           '<div class="cert-presented">This certifies that</div>' +
           '<div class="cert-name">' + escapeHtml(cert.username) + '</div>' +
           '<div class="cert-for">has successfully solved every problem in the</div>' +
-          '<div class="cert-track">' + escapeHtml(cert.track_name).toUpperCase() + '</div>' +
+          '<div class="cert-track">' + escapeHtml(cert.track_name) + '</div>' +
           '<div class="cert-date">Issued on ' + issuedDate + '</div>' +
         '</div>' +
         '<div class="cert-stats">' +
-          '<div class="cert-stat"><div class="cs-label">PROBLEMS SOLVED</div><div class="cs-value">' + cert.problems_solved + ' / ' + cert.problems_total + '</div></div>' +
-          '<div class="cert-stat"><div class="cs-label">ACCURACY</div><div class="cs-value">' + cert.accuracy_pct + '%</div></div>' +
-          '<div class="cert-stat"><div class="cs-label">SUBMISSIONS</div><div class="cs-value">' + cert.total_submissions + '</div></div>' +
+          '<div class="cert-stat"><div class="cs-label">Problems solved</div><div class="cs-value">' + cert.problems_solved + ' / ' + cert.problems_total + '</div></div>' +
+          '<div class="cert-stat"><div class="cs-label">Accuracy</div><div class="cs-value">' + cert.accuracy_pct + '%</div></div>' +
+          '<div class="cert-stat"><div class="cs-label">Submissions</div><div class="cs-value">' + cert.total_submissions + '</div></div>' +
         '</div>' +
         '<div class="cert-bottom">' +
           '<div class="cert-verify-text">Verify: ' + escapeHtml(verifyUrl) + '</div>' +
-          '<img src="../assets/cageddragons-mark.png" alt="CagedDragons" style="width:44px;height:44px;border-radius:8px;" />' +
+          '<img class="cert-brand" src="../assets/cageddragons-mark.png" alt="CagedDragons" />' +
         '</div>' +
         '<div class="cert-footer-bar">Certificate ID: ' + escapeHtml(cert.certificate_code) + '</div>' +
       '</div></div>' +
       '<div class="cert-actions">' +
-        '<a href="' + escapeHtml(verifyUrl) + '" target="_blank">Open verification page →</a>' +
+        '<a href="' + escapeHtml(verifyUrl) + '" target="_blank" rel="noopener">Open the verification page</a>' +
       '</div>';
 
+    // The QR code is a convenience: the verification URL is printed on the card either way, so if the
+    // QR library can't load, drop the empty slot instead of showing a broken one.
     const qrEl = document.getElementById('cert-qr');
+    const dropQr = () => { const slot = qrEl.closest('.cert-qr-top'); if (slot) slot.remove(); };
     if (window.QRCode) {
-      try { new QRCode(qrEl, { text: verifyUrl, width: 48, height: 48 }); }
-      catch (e) { qrEl.textContent = '(QR unavailable)'; }
-    } else {
-      qrEl.textContent = '(QR unavailable)';
-      qrEl.style.cssText = 'width:48px;height:48px;font-size:7px;color:#374151;padding:2px;';
-    }
+      try { new QRCode(qrEl, { text: verifyUrl, width: 64, height: 64 }); }
+      catch (e) { dropQr(); }
+    } else { dropQr(); }
   }
 
 
@@ -836,6 +868,8 @@ whole account.
   // ---- sandboxes: what the server can actually run right now ----
   async function loadSandboxes() {
     if (!backendUrl) return;
+    sbState = 'loading';
+    renderDashboard();
     try {
       const res = await fetch(api('/sandboxes'));
       renderSandboxes(await res.json());
@@ -844,27 +878,34 @@ whole account.
     }
   }
 
-  let backendFeatures = null;   // null = unknown (full Python backend reports nothing -> assume everything works)
+  let backendFeatures = null;   // null = unknown (the full Python backend reports nothing here, so assume everything works)
+  let lastSandboxes = null;
+  let sbState = 'loading';   // loading | ok | down: so "still checking" is never shown as "unreachable"
 
   function renderSandboxes(d) {
+    lastSandboxes = d;
+    sbState = (d && d.sandboxes) ? 'ok' : 'down';
     backendFeatures = (d && d.features) || null;
-    applyFeatureNotes();
     const strip = document.getElementById('sandbox-strip');
-    const langPills = document.getElementById('dash-lang-pills');
-    const sbPills = document.getElementById('dash-sandbox-pills');
     if (!d || !d.sandboxes) {
       strip.innerHTML = '';
-      langPills.innerHTML = '<span class="pill needs">Backend not reachable</span>';
-      sbPills.innerHTML = '<span class="pill needs">Backend not reachable</span>';
-      return;
+      setConn('down', 'Backend unreachable');
+    } else {
+      const tip = sb => sb.label + (sb.version ? ', ' + sb.version : '') + (sb.available ? '' : ', not installed on this server');
+      strip.innerHTML = d.sandboxes.filter(sb => sb.id !== 'terminal' || sb.available).map(sb =>
+        '<span class="sb-chip ' + (sb.available ? 'up' : 'down') + '" title="' + escapeHtml(tip(sb)) + '">' + escapeHtml(sb.label) + '</span>').join('');
+      const langs = d.sandboxes.filter(sb => sb.id !== 'terminal');
+      const ready = langs.filter(sb => sb.available).length;
+      setConn(ready === langs.length ? 'ready' : 'partial', ready + ' of ' + langs.length + ' runtimes ready');
     }
-    const tip = sb => sb.label + (sb.version ? ' — ' + sb.version : '') + (sb.available ? '' : ' — not installed on this server');
-    strip.innerHTML = d.sandboxes.map(sb =>
-      '<span class="sb-chip ' + (sb.available ? 'up' : 'down') + '" title="' + escapeHtml(tip(sb)) + '">' + escapeHtml(sb.label) + '</span>').join('');
-    sbPills.innerHTML = d.sandboxes.map(sb =>
-      '<span class="pill ' + (sb.available ? 'live' : 'needs') + '" title="' + escapeHtml(tip(sb)) + '">' + escapeHtml(sb.label) + (sb.available ? '' : ' ✕') + '</span>').join('');
-    langPills.innerHTML = d.sandboxes.filter(sb => sb.id !== 'terminal').map(sb =>
-      '<span class="pill ' + (sb.available ? 'live' : 'needs') + '">' + escapeHtml(sb.label) + (sb.available ? ': live' : ': not installed') + '</span>').join('');
+    applyFeatureNotes();
+    renderDashboard();
+  }
+
+  function setConn(kind, text) {
+    const chip = document.getElementById('conn-chip');
+    chip.className = 'chip ' + kind;
+    chip.textContent = text;
   }
 
   // The Vercel backend runs code but has no accounts/terminal. Say so up front instead of failing on login.
@@ -872,15 +913,6 @@ whole account.
     const limited = backendFeatures && backendFeatures.accounts === false;
     const authBtn = document.getElementById('auth-toggle-btn');
     if (authBtn) authBtn.title = limited ? 'This backend runs code only: no accounts, projects or terminal' : '';
-    const card = document.querySelector('#dash-sandbox-pills')?.closest('.dash-card');
-    document.querySelectorAll('.dash-card').forEach(c => {
-      if (c.querySelector('h3') && /Terminal/.test(c.querySelector('h3').textContent)) {
-        const row = c.querySelector('.status-row');
-        if (row) row.innerHTML = limited
-          ? '<span class="pill needs">Not on this backend</span>'
-          : '<span class="pill live">Cloud terminal</span><span class="pill needs">Log in to use</span>';
-      }
-    });
     if (typeof resetTerminal === 'function' && termScreen && !authToken) resetTerminal();
   }
 
@@ -1012,4 +1044,188 @@ whole account.
   }));
 
   resetTerminal();
+
+  // ---- home screen (workbench) ----
+  const LAUNCH = [
+    { id: 'python', glyph: 'Py', cls: 'g-py', file: 'main.py' },
+    { id: 'javascript', glyph: 'JS', cls: 'g-js', file: 'app.js' },
+    { id: 'java', glyph: 'Java', cls: 'g-java', file: 'Main.java' },
+    { id: 'c', glyph: 'C', cls: 'g-c', file: 'main.c' },
+    { id: 'cpp', glyph: 'C++', cls: 'g-cpp', file: 'main.cpp' }
+  ];
+  let certProgress = null;
+  let problemsRequested = false;
+
+  function cleanVersion(v) {
+    const m = /\d+(?:\.\d+)+/.exec(v || '');
+    return m ? m[0] : (v || '');
+  }
+
+  function renderDashboard() {
+    const launch = document.getElementById('launch');
+    if (!launch) return;
+    document.getElementById('wb-title').textContent = currentUsername ? 'Welcome back, ' + currentUsername + '.' : 'What are you building today?';
+
+    // launch bar: real versions straight from the backend
+    const byId = {};
+    ((lastSandboxes && lastSandboxes.sandboxes) || []).forEach(sb => { byId[sb.id] = sb; });
+    launch.innerHTML = LAUNCH.map(l => {
+      const sb = byId[l.id];
+      const missing = !!(lastSandboxes && sb && !sb.available);
+      const measured = !sb || sb.verified !== false;               // an inferred "missing" must not block anyone from trying
+      const blocked = missing && measured;
+      const state = !lastSandboxes ? (sbState === 'down' ? 'Backend unreachable' : 'Checking') : (missing ? (measured ? 'Not installed on this server' : 'Needs one-time setup') : (sb ? 'Ready' : ''));
+      return '<button class="launch-tile' + (missing ? ' missing' : '') + '" data-lang="' + l.id + '"' + (blocked ? ' disabled' : '') + '>' +
+        '<span class="launch-glyph ' + l.cls + '">' + l.glyph + '</span>' +
+        '<span class="launch-name">' + LANG_LABEL[l.id] + '</span>' +
+        '<span class="launch-ver">' + escapeHtml(sb && sb.version ? cleanVersion(sb.version) : '') + '&nbsp;</span>' +
+        '<span class="launch-state">' + state + '</span></button>';
+    }).join('');
+
+    renderResume();
+    renderPractice();
+    renderProve();
+    renderRuntimes();
+  }
+
+  function renderResume() {
+    const el = document.getElementById('resume-body');
+    if (backendFeatures && backendFeatures.accounts === false) {
+      el.innerHTML = '<p class="wb-empty">This backend runs code only, so projects are not saved here. The sample files in the editor run exactly the same way.</p>';
+    } else if (!currentUsername) {
+      el.innerHTML = '<p class="wb-empty">Log in to save projects and pick up where you left off. Until then, the sample files in the editor are yours to run and change.</p><button class="btn btn-sm" id="wb-login">Log in</button>';
+      const b = document.getElementById('wb-login');
+      if (b) b.addEventListener('click', () => { const t = document.getElementById('auth-toggle-btn'); const panel = document.getElementById('auth-panel'); if (panel && panel.style.display === 'none') t.click(); const u = document.getElementById('auth-username'); if (u) u.focus(); });
+    } else if (!myProjects.length) {
+      el.innerHTML = '<p class="wb-empty">You have no projects yet. A project holds several files that build and run together.</p><button class="btn btn-sm" id="wb-new">Create a project</button>';
+      const b = document.getElementById('wb-new');
+      if (b) b.addEventListener('click', () => { switchView('ide'); document.getElementById('new-project-btn').click(); });
+    } else {
+      el.innerHTML = myProjects.slice(0, 6).map(p => '<button class="row-link" data-project="' + p.id + '"><span>' + escapeHtml(p.name) + '</span><small>Open</small></button>').join('');
+    }
+  }
+
+  function renderPractice() {
+    const el = document.getElementById('practice-body');
+    const list = Object.values(problemsData || {});
+    if (!backendUrl) { el.innerHTML = '<p class="wb-empty">Connect a backend to load problems.</p>'; return; }
+    if (!list.length) {
+      el.innerHTML = '<p class="wb-empty">Loading problems…</p>';
+      if (!problemsRequested) { problemsRequested = true; loadProblems(); }
+      return;
+    }
+    el.innerHTML = list.slice(0, 5).map(p => '<button class="row-link" data-problem="' + escapeHtml(p.id) + '"><span>' + escapeHtml(p.title) + '</span><small class="diff-pill diff-' + escapeHtml(p.difficulty) + '">' + escapeHtml(p.difficulty) + '</small></button>').join('') +
+      '<button class="row-link" data-view-go="problems"><span>All problems</span><small>Judged on hidden tests</small></button>';
+  }
+
+  async function renderProve() {
+    const el = document.getElementById('prove-body');
+    if (backendFeatures && backendFeatures.accounts === false) {
+      el.innerHTML = '<p class="wb-empty">Certificates are issued by the full DracoSkill backend. This one only runs code.</p>';
+      return;
+    }
+    if (!currentUsername || !backendUrl) {
+      el.innerHTML = '<p class="wb-empty">Solve every problem in the set and DracoSkill issues a certificate with a link anyone can check. Log in to start counting.</p>';
+      return;
+    }
+    if (certProgress && certProgress.user === currentUsername) { paintProve(certProgress.data); return; }
+    el.innerHTML = '<p class="wb-empty">Loading your progress…</p>';
+    try {
+      const res = await fetch(api('/certificates/progress'), { headers: { 'X-Session-Token': authToken || '' } });
+      const data = await res.json();
+      if (!res.ok) { el.innerHTML = '<p class="wb-empty">' + escapeHtml(data.error || 'Could not load your progress.') + '</p>'; return; }
+      certProgress = { user: currentUsername, data: data };
+      paintProve(data);
+    } catch (e) { el.innerHTML = '<p class="wb-empty">Could not load your progress.</p>'; }
+  }
+  function paintProve(d) {
+    const pct = d.problems_total ? Math.round(d.problems_solved / d.problems_total * 100) : 0;
+    document.getElementById('prove-body').innerHTML =
+      '<div class="meter" role="img" aria-label="' + pct + ' percent"><i style="width:' + pct + '%"></i></div>' +
+      '<p style="margin:0"><strong>' + d.problems_solved + ' of ' + d.problems_total + '</strong> problems solved</p>' +
+      '<button class="btn btn-sm" style="margin-top:14px" data-view-go="certs">' + (d.eligible ? 'Get your certificate' : 'See requirements') + '</button>';
+  }
+
+  function renderRuntimes() {
+    const list = document.getElementById('rt-list');
+    const note = document.getElementById('rt-note');
+    if (!lastSandboxes || !lastSandboxes.sandboxes) {
+      list.innerHTML = '<div class="rt-empty">' + (!backendUrl ? 'No backend connected.' : sbState === 'loading' ? 'Checking the backend…' : 'Could not reach the backend. Check its address in the Editor tab.') + '</div>';
+      note.textContent = '';
+      return;
+    }
+    list.innerHTML = lastSandboxes.sandboxes.map(sb =>
+      '<div class="rt-row"><b>' + escapeHtml(sb.id === 'terminal' ? 'Terminal' : sb.label) + '</b>' +
+      '<span class="rt-ver">' + escapeHtml(sb.version ? cleanVersion(sb.version) : (sb.available ? 'ready' : '')) + '</span>' +
+      '<span class="rt-net">Network ' + escapeHtml(sb.network || '') + '</span>' +
+      '<span class="chip ' + (sb.available ? 'ready' : (sb.verified === false ? 'partial' : 'down')) + '">' + (sb.available ? 'Ready' : (sb.verified === false ? 'Needs setup' : 'Not available')) + '</span></div>').join('');
+    const missing = lastSandboxes.sandboxes.filter(sb => sb.id !== 'terminal' && !sb.available);
+    const vercel = lastSandboxes.isolation && lastSandboxes.isolation.driver === 'vercel-sandbox';
+    if (missing.length && vercel) {
+      note.innerHTML = escapeHtml(missing.map(m => m.label).join(', ')) + ' need a one-time setup. <a href="' + escapeHtml(backendUrl.replace(/\/$/, '')) + '/setup" target="_blank" rel="noopener">Open the setup page</a>';
+    } else if (missing.length) {
+      note.textContent = missing.map(m => m.label).join(', ') + ' not installed on this server.';
+    } else { note.textContent = ''; }
+  }
+
+  function launchLanguage(id) {
+    const l = LAUNCH.find(x => x.id === id);
+    switchView('ide');
+    if (currentProjectId && authToken) {
+      const inp = document.getElementById('new-file-name');
+      inp.value = l.file; inp.focus(); inp.select();
+    } else if (!authToken) {
+      activeFiles = demoFiles;
+      loadFile(l.file);
+      editor.focus();
+    }
+  }
+
+  document.getElementById('view-dashboard').addEventListener('click', (e) => {
+    const tile = e.target.closest('.launch-tile');
+    if (tile && !tile.disabled) { launchLanguage(tile.dataset.lang); return; }
+    const proj = e.target.closest('[data-project]');
+    if (proj) { const id = Number(proj.dataset.project); document.getElementById('project-select').value = String(id); switchView('ide'); selectProject(id); return; }
+    const prob = e.target.closest('[data-problem]');
+    if (prob) { switchView('problems'); setTimeout(() => selectProblem(prob.dataset.problem), 0); return; }
+    const go = e.target.closest('[data-view-go]');
+    if (go) switchView(go.dataset.viewGo);
+  });
+
+  // ---- console: drag to resize (remembered), arrow keys too ----
+  (function () {
+    const col = document.getElementById('editor-col'), rz = document.getElementById('resizer');
+    try { const h = localStorage.getItem('draco-console-h'); if (h) col.style.setProperty('--console-h', h + 'px'); } catch (e) { /* storage blocked: fine */ }
+    function set(h) {
+      h = Math.max(120, Math.min(h, col.clientHeight - 200));
+      col.style.setProperty('--console-h', h + 'px');
+      try { localStorage.setItem('draco-console-h', String(Math.round(h))); } catch (e) { /* ignore */ }
+    }
+    rz.addEventListener('pointerdown', (e) => {
+      rz.setPointerCapture(e.pointerId); rz.classList.add('drag');
+      const y0 = e.clientY, h0 = consoleEl.getBoundingClientRect().height;
+      const move = (ev) => set(h0 + (y0 - ev.clientY));
+      const up = () => { rz.classList.remove('drag'); rz.removeEventListener('pointermove', move); rz.removeEventListener('pointerup', up); };
+      rz.addEventListener('pointermove', move); rz.addEventListener('pointerup', up);
+    });
+    rz.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      set(consoleEl.getBoundingClientRect().height + (e.key === 'ArrowUp' ? 24 : -24));
+    });
+  })();
+
+  document.getElementById('conn-btn').addEventListener('click', () => {
+    connectRow.style.display = connectRow.style.display === 'none' ? 'flex' : 'none';
+    if (connectRow.style.display === 'flex') document.getElementById('backend-url').focus();
+  });
+
+  renderDashboard();
   loadSandboxes();
+
+  // deep links from the landing page: /app/#problems, /app/#editor, /app/#certificates
+  (function () {
+    var map = { problems: 'problems', editor: 'ide', ide: 'ide', certificates: 'certs', certs: 'certs' };
+    var v = map[(location.hash || '').replace('#', '')];
+    if (v) switchView(v);
+  })();

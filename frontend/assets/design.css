@@ -1,0 +1,145 @@
+/* DracoSkill design system: "forge" (dark) and "steel" (light).
+   Shared by the landing page and the app. Colour is semantic:
+     ember  = something is running, or the one primary action
+     quench = focus, links, information
+     moss   = ready / passed      brass = certificates      err = failed
+   Everything else is neutral surface + ink. */
+
+@font-face { font-family: "Bricolage"; src: url("fonts/bricolage.woff2") format("woff2-variations"), url("fonts/bricolage.woff2") format("woff2");
+  font-weight: 200 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains"; src: url("fonts/jetbrains-mono.woff2") format("woff2-variations"), url("fonts/jetbrains-mono.woff2") format("woff2");
+  font-weight: 100 800; font-style: normal; font-display: swap; }
+
+:root {
+  --font-ui: "Bricolage", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-code: "JetBrains", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --r-xs: 6px; --r-sm: 8px; --r-md: 12px; --r-lg: 18px;
+  --ease: cubic-bezier(.2,.7,.2,1);
+  color-scheme: dark;
+
+  /* forge (dark) */
+  --ground: #17161A;
+  --panel:  #1F1E24;
+  --raised: #2A2930;
+  --seam:   #38363F;
+  --ink:        #ECE8E1;
+  --ink-dim:    #A9A39B;
+  --ink-faint:  #8A847C;
+  --ember:      #FF6A3D;
+  --ember-hot:  #FF8A5E;
+  --on-ember:   #1A0B05;
+  --quench:     #7CC4D6;
+  --moss:       #7FD19A;
+  --brass:      #D9A94A;
+  --err:        #FF7A6B;
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 10px 30px rgba(0,0,0,.35);
+
+  /* code colours */
+  --tk-kw:  #FF9470;  --tk-str: #8FD6A3;  --tk-num: #E9C46A;
+  --tk-com: #8A847C;  --tk-fn:  #7CC4D6;  --tk-ty:  #C9A7F2;  --tk-pp: #E0A3B8;
+  --code-bg: #1A191E; --code-line: rgba(255,255,255,.04); --code-sel: rgba(124,196,214,.28);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* steel (light): a cool grey-blue ground, not cream */
+  --ground: #EDEFF3;
+  --panel:  #FFFFFF;
+  --raised: #F5F6F9;
+  --seam:   #D3D8E0;
+  --ink:        #1B1A20;
+  --ink-dim:    #4F5663;
+  --ink-faint:  #6B7280;
+  --ember:      #C93E17;
+  --ember-hot:  #E04A1F;
+  --on-ember:   #FFFFFF;
+  --quench:     #0B6E86;
+  --moss:       #17703A;
+  --brass:      #8E6210;
+  --err:        #B42318;
+  --shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 8px 24px rgba(27,26,32,.08);
+
+  --tk-kw:  #B8400E;  --tk-str: #1B7A3C;  --tk-num: #946200;
+  --tk-com: #6B7280;  --tk-fn:  #0B6E86;  --tk-ty:  #6D3BC4;  --tk-pp: #A13A66;
+  --code-bg: #FBFBFD; --code-line: rgba(27,26,32,.045); --code-sel: rgba(11,110,134,.2);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font-family: var(--font-ui); font-size: 15px; line-height: 1.55;
+  font-optical-sizing: auto; -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--quench); text-underline-offset: 3px; }
+code, kbd, pre, .mono { font-family: var(--font-code); font-variant-ligatures: none; }
+* { scrollbar-width: thin; scrollbar-color: var(--seam) transparent; }
+
+:focus-visible { outline: 2px solid var(--quench); outline-offset: 2px; border-radius: 4px; }
+::selection { background: var(--code-sel); }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 38px; padding: 0 16px; border-radius: var(--r-sm);
+  border: 1px solid var(--seam); background: var(--panel); color: var(--ink);
+  font-weight: 600; font-size: 14px; letter-spacing: -.005em; text-decoration: none;
+  transition: background .15s var(--ease), border-color .15s var(--ease), transform .08s var(--ease);
+}
+.btn:hover { background: var(--raised); border-color: var(--ink-faint); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-ember { background: var(--ember); border-color: var(--ember); color: var(--on-ember); }
+.btn-ember:hover { background: var(--ember-hot); border-color: var(--ember-hot); }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* ---------- the ember seam: hot only while something runs ---------- */
+.seam { position: relative; height: 2px; background: var(--seam); overflow: hidden; }
+.seam::after {
+  content: ""; position: absolute; inset: 0; width: 38%;
+  background: linear-gradient(90deg, transparent, var(--ember) 55%, var(--ember-hot) 85%, transparent);
+  transform: translateX(-100%); opacity: 0;
+}
+.is-running > .seam::after, .seam.is-running::after { opacity: 1; animation: seam-sweep 1s linear infinite; }
+@keyframes seam-sweep { to { transform: translateX(270%); } }
+@media (prefers-reduced-motion: reduce) {
+  .is-running > .seam::after, .seam.is-running::after { animation: none; width: 100%; transform: none; opacity: .85; }
+  * { scroll-behavior: auto !important; }
+}
+
+/* ---------- status chips ---------- */
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 99px;
+  border: 1px solid var(--seam); font-size: 12.5px; color: var(--ink-dim); white-space: nowrap; background: transparent; }
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+.chip.ready { color: var(--ink); } .chip.ready::before { background: var(--moss); }
+.chip.off { color: var(--ink-faint); text-decoration: line-through; } .chip.off::before { background: var(--err); }
+
+/* ---------- syntax colours (used by the shared editor + landing) ---------- */
+.tk-kw { color: var(--tk-kw); } .tk-str { color: var(--tk-str); } .tk-num { color: var(--tk-num); }
+.tk-com { color: var(--tk-com); font-style: italic; } .tk-fn { color: var(--tk-fn); }
+.tk-ty { color: var(--tk-ty); } .tk-pp { color: var(--tk-pp); }
+
+/* ---------- code editor (shared) ---------- */
+.code-ed { position: relative; display: flex; min-height: 0; background: var(--code-bg); font-family: var(--font-code);
+  font-size: 13.5px; line-height: 22px; --lh: 22px; --pad: 14px; font-variant-ligatures: none; }
+.code-gutter { flex: none; overflow: hidden; padding: var(--pad) 12px var(--pad) 14px; text-align: right; color: var(--ink-faint);
+  user-select: none; border-right: 1px solid var(--seam); min-width: 44px; }
+.code-gutter pre { margin: 0; font: inherit; line-height: var(--lh); will-change: transform; }
+.code-body { position: relative; flex: 1; min-width: 0; }
+.code-hl, .code-input {
+  position: absolute; inset: 0; margin: 0; border: 0; padding: var(--pad) 18px;
+  font: inherit; line-height: var(--lh); letter-spacing: 0; white-space: pre; tab-size: 4; -moz-tab-size: 4;
+  word-wrap: normal; overflow-wrap: normal; text-align: left;
+}
+.code-hl { overflow: hidden; pointer-events: none; color: var(--ink); padding-bottom: 40px; padding-right: 40px; }
+.code-input { width: 100%; height: 100%; resize: none; overflow: auto; background: transparent; color: transparent;
+  caret-color: var(--ink); outline: none; }
+.code-input::selection { background: var(--code-sel); color: transparent; }
+.code-input::placeholder { color: var(--ink-faint); }
+.code-curline { position: absolute; left: 0; right: 0; height: var(--lh); background: var(--code-line); pointer-events: none; }
+
+.chip.partial::before { background: var(--brass); }
+.chip.down::before { background: var(--err); }

@@ -1,118 +1,135 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <link rel="icon" type="image/png" href="../assets/dracoskill-mark.png">
 <title>DracoSkill</title>
+<script src="../assets/theme.js"></script>
+<link rel="stylesheet" href="../assets/design.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="app">
 
-  <div class="topbar">
-    <div class="wordmark">
-      <img class="mark" src="../assets/dracoskill-mark.png" alt="DracoSkill"/>
+  <header class="topbar">
+    <a class="wordmark" href="../landing/" aria-label="DracoSkill home">
+      <img class="mark" src="../assets/dracoskill-mark.png" alt="" width="30" height="30"/>
       <span>DracoSkill</span>
-    </div>
-    <div class="tabs">
-      <button class="tab active" data-view="dashboard">Dashboard</button>
-      <button class="tab" data-view="ide">IDE</button>
-      <button class="tab" data-view="certs">Certificates</button>
+    </a>
+    <nav class="tabs" aria-label="Sections">
+      <button class="tab active" data-view="dashboard">Home</button>
+      <button class="tab" data-view="ide">Editor</button>
       <button class="tab" data-view="problems">Problems</button>
-    </div>
-    <div class="badge">real execution in the cloud</div>
-    <div class="auth-area" id="auth-area">
-      <button class="tab" id="auth-toggle-btn">Log in</button>
-      <div class="auth-panel" id="auth-panel" style="display:none;">
-        <input type="text" id="auth-username" placeholder="username" autocomplete="username" />
-        <input type="password" id="auth-password" placeholder="password" autocomplete="current-password" />
-        <div class="auth-panel-actions">
-          <button id="auth-login-btn">Log in</button>
-          <button id="auth-register-btn" class="secondary">Register</button>
+      <button class="tab" data-view="certs">Certificates</button>
+    </nav>
+    <div class="topbar-right">
+      <span class="chip" id="conn-chip" title="Connection to the code-running backend">Connecting</span>
+      <button class="icon-btn" data-theme-toggle aria-label="Switch theme">
+        <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.3M12 19.2v2.3M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.3M19.2 12h2.3M4.4 19.6L6 18M18 6l1.6-1.6"/></svg>
+        <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 14.6A8.5 8.5 0 019.4 4a8.5 8.5 0 1010.6 10.6z"/></svg>
+      </button>
+      <div class="auth-area" id="auth-area">
+        <button class="btn btn-sm" id="auth-toggle-btn">Log in</button>
+        <div class="auth-panel" id="auth-panel" style="display:none;">
+          <label class="field">Username<input type="text" id="auth-username" autocomplete="username" /></label>
+          <label class="field">Password<input type="password" id="auth-password" autocomplete="current-password" /></label>
+          <div class="auth-panel-actions">
+            <button class="btn btn-ember btn-sm" id="auth-login-btn">Log in</button>
+            <button class="btn btn-sm secondary" id="auth-register-btn">Create account</button>
+          </div>
+          <div class="auth-error" id="auth-error" role="alert"></div>
         </div>
-        <div class="auth-error" id="auth-error"></div>
       </div>
     </div>
-  </div>
-  <div class="hairline"></div>
+  </header>
 
-  <!-- DASHBOARD -->
-  <div class="view active" id="view-dashboard">
-    <div class="dash-head">
-      <h1>Welcome back.</h1>
-      <p>Write code in five languages, run it in the cloud, and install the libraries you need — all from the browser.</p>
-    </div>
-    <div class="dash-grid">
-      <div class="dash-card">
-        <h3>Cloud IDE</h3>
-        <p>Write and run whole projects in Python, Java, JavaScript, C and C++. Everything compiles and runs on the server — nothing to install on your computer.</p>
-        <div class="status-row" id="dash-lang-pills"><span class="pill needs">Connecting…</span></div>
-        <a class="go" onclick="switchView('ide')">Open the IDE →</a>
-      </div>
-      <div class="dash-card">
-        <h3>Terminal &amp; packages</h3>
-        <p>Install libraries from inside the website: <code>pip</code>, <code>npm</code>, Maven <code>jar</code>s and header-only C/C++ libraries. Install per project, or for your whole account.</p>
-        <div class="status-row"><span class="pill live">Cloud terminal</span><span class="pill needs">Log in to use</span></div>
-        <a class="go" onclick="openTerminal()">Open the terminal →</a>
-      </div>
-      <div class="dash-card">
-        <h3>Six sandboxes</h3>
-        <p>One isolated runtime each for Python, Java, JavaScript, C, C++ — plus the terminal sandbox that installs your packages.</p>
-        <div class="status-row" id="dash-sandbox-pills"><span class="pill needs">Run the backend to see status</span></div>
-        <a class="go" onclick="switchView('ide')">See them in the IDE →</a>
-      </div>
-      <div class="dash-card">
-        <h3>Certificate module</h3>
-        <p>The SkillBuild certificate, rebuilt as a template that renders from stored data instead of a static file — same real record, generated by code.</p>
-        <div class="status-row"><span class="pill live">Generated, not static</span></div>
-        <a class="go" onclick="switchView('certs')">View certificate →</a>
-      </div>
-    </div>
-  </div>
+  <!-- HOME / WORKBENCH -->
+  <main class="view active" id="view-dashboard">
+    <div class="wb">
+      <header class="wb-head">
+        <h1 id="wb-title">What are you building today?</h1>
+        <p id="wb-sub">Pick a language and run something. Nothing to install: your code compiles and runs in a cloud sandbox.</p>
+      </header>
 
-  <!-- IDE -->
-  <div class="view" id="view-ide">
+      <section class="launch" id="launch" aria-label="Start in a language"></section>
+
+      <div class="wb-grid">
+        <section class="wb-block" id="wb-resume" aria-labelledby="h-resume">
+          <h2 id="h-resume">Your projects</h2>
+          <div id="resume-body"></div>
+        </section>
+        <section class="wb-block" id="wb-practice" aria-labelledby="h-practice">
+          <h2 id="h-practice">Practice</h2>
+          <div id="practice-body"></div>
+        </section>
+        <section class="wb-block wb-prove" id="wb-prove" aria-labelledby="h-prove">
+          <h2 id="h-prove">Prove it</h2>
+          <div id="prove-body"></div>
+        </section>
+      </div>
+
+      <section class="runtimes" aria-labelledby="h-rt">
+        <div class="runtimes-head">
+          <h2 id="h-rt">What this server can run</h2>
+          <span class="rt-note" id="rt-note"></span>
+        </div>
+        <div class="rt-list" id="rt-list"><div class="rt-empty">Checking the backend…</div></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- EDITOR -->
+  <main class="view" id="view-ide">
     <div class="ide">
-      <div class="filetree">
+      <aside class="filetree" aria-label="Files">
         <div class="project-bar" id="project-bar" style="display:none;">
-          <select id="project-select"></select>
-          <button id="new-project-btn" title="New project">+</button>
+          <select id="project-select" aria-label="Project"></select>
+          <button class="icon-btn small" id="new-project-btn" title="New project" aria-label="New project">+</button>
         </div>
-        <div class="ft-label" id="ft-label">Project (sign in to save your own)</div>
+        <div class="ft-label" id="ft-label">Sample files</div>
         <div id="file-list">
           <div class="ft-item active" data-file="main.py"><span class="ft-dot dot-py"></span>main.py</div>
-          <div class="ft-item" data-file="app.js"><span class="ft-dot dot-js"></span>app.js</div>
-          <div class="ft-item" data-file="Main.java"><span class="ft-dot dot-java"></span>Main.java</div>
-          <div class="ft-item" data-file="main.c"><span class="ft-dot dot-c"></span>main.c</div>
-          <div class="ft-item" data-file="main.cpp"><span class="ft-dot dot-cpp"></span>main.cpp</div>
-          <div class="ft-item" data-file="README.md"><span class="ft-dot dot-md"></span>README.md</div>
         </div>
         <div class="ft-add-row" id="ft-add-row" style="display:none;">
-          <input type="text" id="new-file-name" placeholder="Main.java, util.c …" />
-          <button id="add-file-btn">+</button>
+          <input type="text" id="new-file-name" placeholder="Main.java, util.c" aria-label="New file name" />
+          <button class="icon-btn small" id="add-file-btn" aria-label="Add file">+</button>
         </div>
-      </div>
-      <div class="editor-col">
+      </aside>
+
+      <div class="editor-col" id="editor-col">
         <div class="editor-wrap">
           <div class="editor-bar">
-            <span class="fname" id="editor-fname">main.py</span>
-            <button class="save-btn" id="save-btn" style="display:none;">Save</button>
-            <button class="run-btn" id="run-btn"><span id="run-label">▶ Run</span></button>
+            <span class="fname-wrap"><span class="ft-dot" id="editor-dot"></span><span class="fname" id="editor-fname">main.py</span><span class="dirty" id="dirty-dot" hidden title="Unsaved changes"></span></span>
+            <span class="bar-spacer"></span>
+            <button class="btn btn-sm save-btn" id="save-btn" style="display:none;">Save</button>
+            <button class="btn btn-ember run-btn" id="run-btn" title="Run (Ctrl+Enter)"><svg class="i-play" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 1.8v12.4a.6.6 0 00.9.5l10-6.2a.6.6 0 000-1L3.9 1.3a.6.6 0 00-.9.5z" fill="currentColor"/></svg><span id="run-label">Run</span><kbd id="run-kbd">Ctrl+Enter</kbd></button>
           </div>
-          <textarea class="editor" id="editor" spellcheck="false"></textarea>
+          <textarea class="editor" id="editor" aria-label="Code editor"></textarea>
+          <div class="statusbar">
+            <span id="sb-lang">Python</span>
+            <span id="sb-pos">Line 1, column 1</span>
+            <span class="bar-spacer"></span>
+            <button class="linkish" id="conn-btn" title="Change backend address">Backend</button>
+          </div>
         </div>
-        <div class="output-wrap console">
+
+        <div class="resizer" id="resizer" role="separator" aria-orientation="horizontal" aria-label="Resize console" tabindex="0"></div>
+
+        <div class="console" id="console">
           <div class="console-tabs">
             <button class="ctab active" data-ctab="output">Output</button>
             <button class="ctab" data-ctab="terminal">Terminal</button>
-            <div class="sandbox-strip" id="sandbox-strip" title="Server sandboxes"></div>
+            <div class="sandbox-strip" id="sandbox-strip" title="Runtimes on this server"></div>
           </div>
+          <div class="seam" aria-hidden="true"></div>
           <div class="cpane active" id="cpane-output">
-            <textarea id="stdin-input" rows="1" spellcheck="false" placeholder="Program input (stdin) — optional, one value per line"></textarea>
-            <div class="output-body" id="output">Press Run to execute for real — Python, Java, JavaScript, C or C++.</div>
+            <div class="output-body" id="output">Run your code to see its output here.</div>
+            <label class="stdin-row"><span>Input</span><textarea id="stdin-input" rows="1" spellcheck="false" placeholder="Text your program reads from stdin, one value per line"></textarea></label>
             <div class="connect-row" id="connect-row" style="display:none;">
-              <input id="backend-url" type="text" placeholder="http://localhost:8787 (run server.py locally)" />
-              <button id="connect-btn">Connect</button>
+              <input id="backend-url" type="text" placeholder="Backend address, for example http://localhost:8787" aria-label="Backend address" />
+              <button class="btn btn-sm" id="connect-btn">Connect</button>
             </div>
           </div>
           <div class="cpane" id="cpane-terminal">
@@ -128,63 +145,67 @@
             <div class="term-screen mono" id="term-screen"></div>
             <div class="term-input-row">
               <span class="term-prompt mono" id="term-prompt">$</span>
-              <input class="term-input mono" id="term-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type a command — try: help" />
+              <input class="term-input mono" id="term-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type a command, or try: help" aria-label="Terminal command" />
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <!-- CERTIFICATES -->
-  <div class="view" id="view-certs">
+  <main class="view" id="view-certs">
     <div class="cert-view">
-      <h1 style="font-size:22px;margin:0 0 8px;">Certificate module</h1>
-      <p class="lead">Earned by solving every problem in the current set — not handed out for showing up. Every number below comes from your real submission history.</p>
-      <div id="cert-content"><span class="hint">Sign in, then check back here.</span></div>
+      <header class="page-head">
+        <h1>Certificates</h1>
+        <p>You earn one by solving every problem in the set. Every number on it comes from your own submission history.</p>
+      </header>
+      <div id="cert-content"><p class="hint">Sign in, then check back here.</p></div>
     </div>
-  </div>
+  </main>
 
   <!-- PROBLEMS -->
-  <div class="view" id="view-problems">
+  <main class="view" id="view-problems">
     <div class="problems-grid">
-      <div class="problems-sidebar">
+      <aside class="problems-sidebar">
         <div class="problem-list" id="problem-list">
-          <div class="ft-label">Connect a backend from the IDE tab first</div>
+          <div class="ft-label">Connecting…</div>
         </div>
         <div class="history-box" id="history-box" style="display:none;">
-          <div class="ft-label">Your history</div>
+          <div class="ft-label">Your submissions</div>
           <div id="history-list"></div>
         </div>
-      </div>
+      </aside>
       <div class="problem-detail">
-        <div class="problem-desc" id="problem-desc">Select a problem on the left once the list loads.</div>
-        <div class="editor-wrap">
+        <div class="problem-desc" id="problem-desc"><p class="hint">Choose a problem on the left. It loads starter code in the language you pick.</p></div>
+        <div class="editor-wrap problem-editor-wrap">
           <div class="editor-bar">
-            <span class="fname">solution</span>
-            <div class="lang-toggle">
+            <div class="lang-toggle" role="group" aria-label="Language">
               <button class="lang-btn active" data-lang="python">Python</button>
               <button class="lang-btn" data-lang="javascript">JavaScript</button>
               <button class="lang-btn" data-lang="java">Java</button>
               <button class="lang-btn" data-lang="c">C</button>
               <button class="lang-btn" data-lang="cpp">C++</button>
             </div>
-            <button class="run-btn" id="submit-btn"><span id="submit-label">Submit</span></button>
+            <span class="bar-spacer"></span>
+            <button class="btn btn-ember run-btn" id="submit-btn"><svg class="i-play" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 1.8v12.4a.6.6 0 00.9.5l10-6.2a.6.6 0 000-1L3.9 1.3a.6.6 0 00-.9.5z" fill="currentColor"/></svg><span id="submit-label">Submit</span></button>
           </div>
-          <textarea class="editor" id="problem-editor" spellcheck="false" placeholder="Pick a problem to load starter code"></textarea>
+          <textarea class="editor" id="problem-editor" aria-label="Solution" placeholder="Choose a problem to load starter code"></textarea>
         </div>
-        <div class="output-wrap" style="height:180px;">
-          <div class="output-bar">Verdict</div>
-          <div class="output-body" id="problem-output"><span class="hint">Real test cases, run through the same execution service — not a canned pass/fail.</span></div>
+        <div class="verdict-panel" id="verdict-panel">
+          <div class="seam" aria-hidden="true"></div>
+          <div class="output-body" id="problem-output"><span class="hint">Submitting runs your code against every test case, including hidden ones.</span></div>
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
 </div>
 
 <script src="../assets/config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../assets/highlight.js"></script>
+<script src="../assets/editor.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

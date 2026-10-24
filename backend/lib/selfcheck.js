@@ -9,6 +9,7 @@
 // All six programs run in ONE sandbox (one creation from the free allowance).
 import { RunSession, getFactory, LABELS } from './runner.js';
 import { findSnapshotId } from './toolchain.js';
+import { rememberVersions } from './status.js';
 import { randomInt } from 'node:crypto';
 
 const PROGRAMS = {
@@ -108,6 +109,10 @@ export async function selfCheck(factory = getFactory(), randomN = () => randomIn
   } finally {
     try { await shared?.stop(); } catch { /* already stopped */ }
   }
+  // a self-check is a real measurement: remember it so /sandboxes can show real versions without spending a sandbox
+  const seen = {};
+  for (const r of results) if (r.verified) seen[r.language] = r.version;
+  rememberVersions(seen);
   return {
     ok: results.every((r) => r.verified),
     input: n, expectedFormula: 'n*n+7',

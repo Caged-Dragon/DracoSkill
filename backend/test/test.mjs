@@ -6,6 +6,8 @@ const { judge } = await import('../lib/judge.js');
 const { default: handler } = await import('../api/index.js');
 const tc = await import('../lib/toolchain.js');
 const sc = await import('../lib/selfcheck.js');
+const st = await import('../lib/status.js');
+const fake = await import('./fake-sandbox.mjs');
 
 let pass = 0, fail = 0;
 async function t(name, fn) {
@@ -225,6 +227,41 @@ await t('verifyOutput unit cases', async () => {
 await t('GET /selfcheck route works and is rate limited', async () => {
   globalThis.__DRACO_SANDBOX_FACTORY = fakeFactory;
   const r = await call('GET', '/selfcheck'); assert.equal(r.status, 200); assert.equal(r.json.ok, true);
+});
+
+console.log('/sandboxes is cheap and honest');
+await t('default /sandboxes creates NO sandbox (page loads cost nothing)', async () => {
+  st.forgetVersions(); tc.forgetSnapshot(); globalThis.__DRACO_SETUP_CLIENT = makeFakeSetupClient();
+  const before = fake.created;
+  const r = await call('GET', '/sandboxes');
+  assert.equal(fake.created, before, 'a sandbox was created just to answer /sandboxes');
+  const by = Object.fromEntries(r.json.sandboxes.map((x) => [x.id, x]));
+  assert.equal(by.python.available, true); assert.equal(by.javascript.available, true);
+  assert.equal(by.java.available, false); assert.equal(by.c.available, false);   // no snapshot yet
+  assert.equal(by.python.verified, false); assert.equal(r.json.isolation.inferred, true);
+  delete globalThis.__DRACO_SETUP_CLIENT; tc.forgetSnapshot();
+});
+await t('with the setup snapshot, all five are reported ready (still without creating a sandbox)', async () => {
+  st.forgetVersions(); const c = makeFakeSetupClient(); c.st.snap = 'snap_ok'; globalThis.__DRACO_SETUP_CLIENT = c; tc.forgetSnapshot();
+  const before = fake.created;
+  const r = await call('GET', '/sandboxes');
+  assert.equal(fake.created, before);
+  assert.ok(r.json.sandboxes.filter((x) => x.id !== 'terminal').every((x) => x.available));
+  assert.equal(r.json.isolation.snapshot, true);
+  delete globalThis.__DRACO_SETUP_CLIENT; tc.forgetSnapshot();
+});
+await t('?probe=1 really measures (one sandbox) and returns verified versions', async () => {
+  st.forgetVersions(); const before = fake.created;
+  const r = await call('GET', '/api/index?path=sandboxes&probe=1');
+  assert.equal(fake.created, before + 1);
+  assert.ok(r.json.sandboxes.slice(0, 5).every((x) => x.verified && x.available && x.version));
+  const again = await call('GET', '/sandboxes');                 // cached for 15 minutes
+  assert.equal(fake.created, before + 1); assert.ok(again.json.sandboxes[0].version);
+});
+await t('a self-check feeds real versions into /sandboxes', async () => {
+  st.forgetVersions(); await sc.selfCheck(fakeFactory);
+  const r = await call('GET', '/sandboxes');
+  assert.equal(r.json.sandboxes[0].verified, true); assert.match(r.json.sandboxes[2].version, /Java/);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
