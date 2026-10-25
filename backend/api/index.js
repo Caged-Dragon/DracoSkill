@@ -1,15 +1,13 @@
-// DracoSkill execution API on Vercel. One function, routed by path, so the
-// frontend's existing calls (/health, /sandboxes, /execute, /problems, /submit)
-// work unchanged. Accounts, projects, the terminal and certificates need a
-// database and persistent disk that Vercel functions don't have; they answer
-// 501 with a clear message (see README → "What this backend does not do").
+// DracoSkill online compiler API on Vercel. One function, routed by path:
+//   POST /execute    run one program (python, javascript, java, c, cpp) with optional stdin
+//   GET  /sandboxes  which languages this server can run (free, no sandbox is created)
+//   GET  /setup      one-time page that installs the compilers; GET /selfcheck proves they really run
+//   GET  /health
 import { execute } from '../lib/runner.js';
-import { judge, listProblems } from '../lib/judge.js';
 import { describe } from '../lib/status.js';
 import { setupPage, startSetup, setupStatus } from '../lib/toolchain.js';
 import { selfCheck } from '../lib/selfcheck.js';
 
-const NOT_HERE = /^\/(auth|projects|terminal|certificates|confirmation|submissions)(\/|$)/;
 const hits = new Map();
 
 function limited(key, max, windowMs = 60_000) {
@@ -21,10 +19,28 @@ function limited(key, max, windowMs = 60_000) {
   return false;
 }
 
+// ALLOWED_ORIGINS (comma separated, e.g. https://dracoskill-frontend.vercel.app) limits which websites may use this API.
+// Unset = open to every site (so a fresh deploy just works). Same-origin calls (the /setup page) are always allowed.
+// HONEST LIMIT: this stops other WEBSITES from spending your quota through visitors' browsers. It cannot stop a script that
+// forges the Origin header; the per-address rate limit and the monthly allowance are the backstops for that.
+function allowedList() { return (process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean); }
+function originAllowed(req) {
+  const list = allowedList();
+  const origin = req.headers.origin;
+  if (!list.length || !origin) return true;                       // no Origin header = not a browser cross-site call
+  try { if (new URL(origin).host === req.headers.host) return true; } catch { return false; }
+  return list.includes(origin.replace(/\/$/, ''));
+}
+function applyCors(req, res) {
+  const list = allowedList();
+  if (!list.length) { res.setHeader('Access-Control-Allow-Origin', '*'); return; }
+  res.setHeader('Vary', 'Origin');
+  if (originAllowed(req) && req.headers.origin) res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+}
+
 function send(res, status, body) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.end(JSON.stringify(body));
 }
 
@@ -35,14 +51,16 @@ export default async function handler(req, res) {
   const forwarded = u.searchParams.get('path');
   const raw = forwarded !== null && u.pathname.startsWith('/api') ? '/' + forwarded : u.pathname;
   const path = raw.replace(/\/+$/, '') || '/';
+  applyCors(req, res);
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Session-Token');
     return res.end();
   }
   try {
+    // every route can spend sandbox quota (POST /execute, /setup/start, GET /selfcheck, ?probe=1), so the check comes first
+    if (!originAllowed(req)) return send(res, 403, { error: 'This website is not allowed to use this server.' });
     if (req.method === 'GET' && path === '/setup') {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -61,22 +79,14 @@ export default async function handler(req, res) {
     }
     if (req.method === 'GET' && path === '/health') return send(res, 200, { status: 'ok', service: 'dracoskill-execution', backend: 'vercel-sandbox' });
     if (req.method === 'GET' && path === '/sandboxes') return send(res, 200, await describe(undefined, { probe: new URL(req.url, 'http://x').searchParams.get('probe') === '1' }));
-    if (req.method === 'GET' && path === '/problems') return send(res, 200, { problems: listProblems() });
-    if (req.method === 'GET' && path === '/auth/me') return send(res, 200, { authenticated: false, username: null });
-
-    if (NOT_HERE.test(path)) {
-      return send(res, 501, { error: "Accounts, projects, the terminal and certificates aren't available on the Vercel backend. Anonymous code running works; use the Python backend (Render/self-hosted) for the full platform." });
-    }
-
-    if (req.method === 'POST' && (path === '/execute' || path === '/submit')) {
+    if (req.method === 'POST' && Number(req.headers['content-length'] || 0) > 400_000) return send(res, 413, { error: 'Request is too large.' });
+    if (req.method === 'POST' && path === '/execute') {
       const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
       if (limited(ip, 20)) return send(res, 429, { error: 'Too many runs. Slow down a little.' });
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = null; } }
       if (!body || typeof body !== 'object') return send(res, 400, { error: 'Invalid JSON body' });
-      const [result, status] = path === '/execute'
-        ? await execute(body.language, body.code, body.stdin || '')
-        : await judge(body.problemId, body.language, body.code);
+      const [result, status] = await execute(body.language, body.code, body.stdin || '');
       return send(res, status, result);
     }
     return send(res, 404, { error: 'Not found' });

@@ -83,7 +83,12 @@
       ta.setSelectionRange(ls, ls + nb.length);
     }
 
+    var escaped = false;   // after Esc, the next Tab moves focus instead of inserting spaces (WCAG: no keyboard trap)
+    ta.addEventListener('blur', function () { escaped = false; });
     ta.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { escaped = true; return; }
+      if (e.key === 'Tab' && escaped) { escaped = false; return; }
+      if (e.key !== 'Shift' && e.key !== 'Tab') escaped = false;
       if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'Tab') {
         e.preventDefault();

@@ -167,8 +167,18 @@ export async function execute(language, code, stdin = '', factory = getFactory()
     r.compileError = false;
     return [r, 200];
   } catch (e) {
+    if (isCapacityError(e)) return [{ error: CAPACITY_MESSAGE, code: 'capacity' }, 503];
     return [{ error: `The sandbox service failed: ${e?.message || e}` }, 502];
   } finally {
     await s.close();
   }
+}
+
+export const CAPACITY_MESSAGE = 'This site has used up its free run allowance for now. Please try again later.';
+// The SDK's exact error shape for "over quota" is not documented in what I could verify, so match on the HTTP status
+// when present and on the wording otherwise. A wrong guess only means a less friendly message, never a wrong result.
+export function isCapacityError(e) {
+  const status = e?.status ?? e?.statusCode ?? e?.response?.status;
+  if (status === 429 || status === 402) return true;
+  return /rate.?limit|quota|exceed|too many requests|usage limit|capacity|payment required|\b429\b|\b402\b/i.test(String(e?.message || e));
 }

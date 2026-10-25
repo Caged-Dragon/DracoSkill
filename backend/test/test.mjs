@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { fakeFactory, created, stopped, makeFakeSetupClient } from './fake-sandbox.mjs';
 globalThis.__DRACO_SANDBOX_FACTORY = fakeFactory;
 const { execute } = await import('../lib/runner.js');
-const { judge } = await import('../lib/judge.js');
 const { default: handler } = await import('../api/index.js');
 const tc = await import('../lib/toolchain.js');
 const sc = await import('../lib/selfcheck.js');
@@ -14,11 +13,12 @@ async function t(name, fn) {
   try { await fn(); pass++; console.log('  PASS ', name); }
   catch (e) { fail++; console.log('  FAIL ', name, '\n       ', String(e.message).slice(0, 300)); }
 }
-async function call(method, url, body) {
-  let status, out = '';
-  const res = { setHeader() {}, end(b) { out = b || ''; }, set statusCode(v) { status = v; }, get statusCode() { return status; } };
-  await handler({ method, url, headers: { 'x-forwarded-for': '9.9.9.' + Math.floor(Math.random() * 250) }, body }, res);
-  return { status, json: out ? JSON.parse(out) : null };
+async function call(method, url, body, headers = {}) {
+  let status, out = ''; const hdr = {};
+  const res = { setHeader(k, v) { hdr[k.toLowerCase()] = v; }, end(b) { out = b || ''; }, set statusCode(v) { status = v; }, get statusCode() { return status; } };
+  await handler({ method, url, headers: { 'x-forwarded-for': '9.9.9.' + Math.floor(Math.random() * 250), ...headers }, body }, res);
+  let json = null; try { json = out ? JSON.parse(out) : null; } catch { /* html page */ }
+  return { status, json, headers: hdr, raw: out };
 }
 
 console.log('execute: all five languages');
@@ -74,47 +74,26 @@ await t('every sandbox is stopped (no leaks)', async () => {
   assert.equal(c, st, `created ${c}, stopped ${st}`);
 });
 
-console.log('judge');
-const sols = {
-  java: 'import java.util.Scanner;\npublic class Main{public static void main(String[] a){Scanner s=new Scanner(System.in);System.out.println(s.nextLong()+s.nextLong());}}',
-  c: '#include <stdio.h>\nint main(){long long a,b;scanf("%lld %lld",&a,&b);printf("%lld\\n",a+b);}',
-  python: 'a,b=map(int,input().split())\nprint(a+b)',
-};
-for (const [lang, sol] of Object.entries(sols)) {
-  await t(`judge accepts ${lang}`, async () => { const [r] = await judge('sum-two', lang, sol); assert.equal(r.verdict, 'Accepted', JSON.stringify(r)); assert.equal(r.results.length, 3); });
-}
-await t('judge: Wrong Answer', async () => { const [r] = await judge('sum-two', 'python', 'print(0)'); assert.equal(r.verdict, 'Wrong Answer'); });
-await t('judge: Compilation Error', async () => { const [r] = await judge('sum-two', 'c', 'int main(){return'); assert.equal(r.verdict, 'Compilation Error'); });
-await t('judge: Time Limit Exceeded', async () => { const [r] = await judge('sum-two', 'python', 'while True: pass'); assert.equal(r.verdict, 'Time Limit Exceeded'); });
-await t('judge: Runtime Error (C segfault)', async () => { const [r] = await judge('sum-two', 'c', 'int main(){int*p=0;*p=1;}'); assert.equal(r.verdict, 'Runtime Error'); });
-await t('hidden tests hide input/output', async () => { const [r] = await judge('sum-two', 'python', sols.python); const h = r.results.find((x) => x.hidden); assert.equal(h.input, undefined); assert.equal(h.actual, undefined); });
-await t('unknown problem 404', async () => assert.equal((await judge('nope', 'python', 'x'))[1], 404));
-
 console.log('HTTP handler');
 await t('GET /health', async () => { const r = await call('GET', '/health'); assert.equal(r.status, 200); assert.equal(r.json.status, 'ok'); });
 await t('rewrite form /api/index?path=... routes correctly', async () => {
   assert.equal((await call('GET', '/api/index?path=health')).json.status, 'ok');
-  assert.equal((await call('GET', '/api/index?path=problems')).json.problems.length, 3);
-  assert.equal((await call('POST', '/api/index?path=auth/login', {})).status, 501);
+  assert.equal((await call('GET', '/api/index?path=sandboxes')).status, 200);
+  assert.equal((await call('GET', '/api/index?path=problems')).status, 404);   // removed feature stays removed
   assert.equal((await call('GET', '/api/index?path=')).status, 404);
 });
-await t('GET /problems has 5-language starters', async () => { const r = await call('GET', '/problems'); assert.equal(r.json.problems.length, 3); assert.deepEqual(Object.keys(r.json.problems[0].starter).sort(), ['c', 'cpp', 'java', 'javascript', 'python']); });
 await t('POST /execute works', async () => { const r = await call('POST', '/execute', { language: 'python', code: 'print(6*7)' }); assert.equal(r.status, 200); assert.equal(r.json.stdout.trim(), '42'); });
-await t('POST /submit works', async () => { const r = await call('POST', '/submit', { problemId: 'sum-two', language: 'python', code: sols.python }); assert.equal(r.json.verdict, 'Accepted'); assert.equal(r.json.saved, false); });
-await t('GET /sandboxes reports 5 languages + terminal unavailable', async () => {
+await t('GET /sandboxes reports exactly the five languages', async () => {
   const r = await call('GET', '/sandboxes');
   assert.equal(r.status, 200);
   const ids = r.json.sandboxes.map((s) => s.id);
-  assert.deepEqual(ids, ['python', 'javascript', 'java', 'c', 'cpp', 'terminal']);
-  assert.equal(r.json.sandboxes.find((s) => s.id === 'terminal').available, false);
-  assert.equal(r.json.features.accounts, false);
+  assert.deepEqual(ids, ['python', 'javascript', 'java', 'c', 'cpp']);
 });
-await t('accounts/projects/terminal answer 501 with a clear message', async () => {
-  for (const [m, p] of [['POST', '/auth/login'], ['POST', '/auth/register'], ['GET', '/projects'], ['POST', '/terminal'], ['GET', '/certificates/mine']]) {
-    const r = await call(m, p, {}); assert.equal(r.status, 501, p); assert.match(r.json.error, /aren't available/);
+await t('removed features answer 404 (no accounts, problems, terminal, certificates)', async () => {
+  for (const [m, p] of [['GET', '/problems'], ['POST', '/submit'], ['POST', '/auth/login'], ['GET', '/projects'], ['POST', '/terminal'], ['GET', '/certificates/mine']]) {
+    assert.equal((await call(m, p, {})).status, 404, p);
   }
 });
-await t('GET /auth/me says not logged in', async () => { assert.equal((await call('GET', '/auth/me')).json.authenticated, false); });
 await t('bad JSON body -> 400; unknown path -> 404', async () => {
   assert.equal((await call('POST', '/execute', 'not json')).status, 400);
   assert.equal((await call('GET', '/nope')).status, 404);
@@ -246,7 +225,7 @@ await t('with the setup snapshot, all five are reported ready (still without cre
   const before = fake.created;
   const r = await call('GET', '/sandboxes');
   assert.equal(fake.created, before);
-  assert.ok(r.json.sandboxes.filter((x) => x.id !== 'terminal').every((x) => x.available));
+  assert.ok(r.json.sandboxes.every((x) => x.available));
   assert.equal(r.json.isolation.snapshot, true);
   delete globalThis.__DRACO_SETUP_CLIENT; tc.forgetSnapshot();
 });
@@ -254,7 +233,7 @@ await t('?probe=1 really measures (one sandbox) and returns verified versions', 
   st.forgetVersions(); const before = fake.created;
   const r = await call('GET', '/api/index?path=sandboxes&probe=1');
   assert.equal(fake.created, before + 1);
-  assert.ok(r.json.sandboxes.slice(0, 5).every((x) => x.verified && x.available && x.version));
+  assert.ok(r.json.sandboxes.every((x) => x.verified && x.available && x.version));
   const again = await call('GET', '/sandboxes');                 // cached for 15 minutes
   assert.equal(fake.created, before + 1); assert.ok(again.json.sandboxes[0].version);
 });
@@ -262,6 +241,52 @@ await t('a self-check feeds real versions into /sandboxes', async () => {
   st.forgetVersions(); await sc.selfCheck(fakeFactory);
   const r = await call('GET', '/sandboxes');
   assert.equal(r.json.sandboxes[0].verified, true); assert.match(r.json.sandboxes[2].version, /Java/);
+});
+
+console.log('origin lock, quota message, size cap');
+const SITE = 'https://dracoskill-frontend.vercel.app';
+await t('open by default: any website allowed when ALLOWED_ORIGINS is unset', async () => {
+  delete process.env.ALLOWED_ORIGINS;
+  const r = await call('POST', '/execute', { language: 'python', code: 'print(1)' }, { origin: 'https://anything.example' });
+  assert.equal(r.status, 200); assert.equal(r.headers['access-control-allow-origin'], '*');
+});
+await t('with ALLOWED_ORIGINS: your site works and is echoed back (not *)', async () => {
+  process.env.ALLOWED_ORIGINS = SITE + ',http://localhost:8000';
+  const r = await call('POST', '/execute', { language: 'python', code: 'print(7)' }, { origin: SITE });
+  assert.equal(r.status, 200); assert.equal(r.headers['access-control-allow-origin'], SITE); assert.equal(r.headers['vary'], 'Origin');
+});
+await t('with ALLOWED_ORIGINS: another website is refused BEFORE any sandbox is created', async () => {
+  process.env.ALLOWED_ORIGINS = SITE; const before = fake.created;
+  for (const [m, p, b] of [['POST', '/execute', { language: 'python', code: 'print(1)' }], ['GET', '/selfcheck'], ['GET', '/api/index?path=sandboxes&probe=1'], ['POST', '/setup/start', {}]]) {
+    const r = await call(m, p, b, { origin: 'https://evil.example' });
+    assert.equal(r.status, 403, m + ' ' + p); assert.equal(r.headers['access-control-allow-origin'], undefined);
+  }
+  assert.equal(fake.created, before, 'a sandbox was created for a refused website');
+});
+await t('with ALLOWED_ORIGINS: same-origin calls (the /setup page) and header-less calls still work', async () => {
+  process.env.ALLOWED_ORIGINS = SITE;
+  const same = await call('GET', '/setup/status', undefined, { origin: 'https://api.example.com', host: 'api.example.com' });
+  assert.equal(same.status, 200);
+  const noOrigin = await call('GET', '/health');
+  assert.equal(noOrigin.status, 200);
+});
+await t('preflight from a refused website gets no permission header', async () => {
+  process.env.ALLOWED_ORIGINS = SITE;
+  const r = await call('OPTIONS', '/execute', undefined, { origin: 'https://evil.example' });
+  assert.equal(r.status, 204); assert.equal(r.headers['access-control-allow-origin'], undefined);
+  delete process.env.ALLOWED_ORIGINS;
+});
+await t('a used-up allowance becomes a friendly 503, not a crash', async () => {
+  for (const err of [Object.assign(new Error('boom'), { status: 429 }), new Error('Rate limit exceeded'), new Error('Request failed with status code 402')]) {
+    const [r, status] = await execute('python', 'print(1)', '', async () => { throw err; });
+    assert.equal(status, 503); assert.equal(r.code, 'capacity'); assert.match(r.error, /free run allowance/);
+  }
+  const [r2, s2] = await execute('python', 'print(1)', '', async () => { throw new Error('socket hang up'); });
+  assert.equal(s2, 502); assert.match(r2.error, /sandbox service failed/);          // other failures stay honest
+});
+await t('oversized request body is refused with 413', async () => {
+  const r = await call('POST', '/execute', { language: 'python', code: 'x' }, { 'content-length': '500000' });
+  assert.equal(r.status, 413);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

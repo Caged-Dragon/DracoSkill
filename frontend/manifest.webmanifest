@@ -1,0 +1,26 @@
+{
+  "id": "./",
+  "name": "DracoSkill Online Compiler",
+  "short_name": "DracoSkill",
+  "description": "Write and run Python, JavaScript, Java, C and C++ in your browser. Nothing to install.",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17161A",
+  "theme_color": "#17161A",
+  "categories": ["developer tools", "education", "productivity"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "New Python program", "short_name": "Python", "url": "./?lang=python&source=shortcut", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "New JavaScript program", "short_name": "JavaScript", "url": "./?lang=javascript&source=shortcut", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "New Java program", "short_name": "Java", "url": "./?lang=java&source=shortcut", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "New C program", "short_name": "C", "url": "./?lang=c&source=shortcut", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

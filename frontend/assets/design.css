@@ -2,7 +2,7 @@
    Shared by the landing page and the app. Colour is semantic:
      ember  = something is running, or the one primary action
      quench = focus, links, information
-     moss   = ready / passed      brass = certificates      err = failed
+     moss   = ready / passed      brass = needs attention (setup, partial status)      err = failed
    Everything else is neutral surface + ink. */
 
 @font-face { font-family: "Bricolage"; src: url("fonts/bricolage.woff2") format("woff2-variations"), url("fonts/bricolage.woff2") format("woff2");

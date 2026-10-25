@@ -55,10 +55,8 @@ export async function describe(factory = getFactory(), { probe = false } = {}) {
     version: (versions && versions[id]) || null,
     network: 'blocked (own microVM, deny-all)',
   }));
-  sandboxes.push({ id: 'terminal', label: 'Terminal', available: false, verified: true, version: null, network: 'not available on this backend' });
   return {
     sandboxes,
-    features: { accounts: false, projects: false, terminal: false, certificates: false },
     isolation: {
       driver: 'vercel-sandbox', perRunMicroVM: true, networkNamespace: true, perUserUid: false,
       snapshot: !!snapshotId, inferred: !verified,
